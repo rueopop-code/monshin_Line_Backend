@@ -3,6 +3,7 @@ const express = require("express");
 const line = require("@line/bot-sdk");
 const axios = require("axios");
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 
@@ -13,19 +14,68 @@ const lineConfig = {
 };
 const client = new line.messagingApi.MessagingApiClient(lineConfig);
 
-// ─── Serve LIFF HTML ───────────────────────────────────────────────────────────
+// ─── JSON body parser (รับ base64 รูปใหญ่ได้) ─────────────────────────────────
+app.use(express.json({ limit: "20mb" }));
+
+// ─── Serve LIFF HTML + temp images ────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/temp", express.static(path.join(__dirname, "temp")));
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "liff.html"));
 });
 
+// ─── API: รับรูปสลิปจาก LIFF แล้วส่งเข้ากลุ่ม LINE ───────────────────────────
+app.post("/send-slip", async (req, res) => {
+  try {
+    const { base64Image, groupId } = req.body;
+    if (!base64Image || !groupId) {
+      return res.status(400).json({ success: false, error: "Missing data" });
+    }
+
+    // สร้างโฟลเดอร์ temp ถ้ายังไม่มี
+    const tempDir = path.join(__dirname, "temp");
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
+
+    // บันทึกรูปชั่วคราว
+    const filename = `slip_${Date.now()}.jpg`;
+    const filepath = path.join(tempDir, filename);
+    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
+    fs.writeFileSync(filepath, Buffer.from(base64Data, "base64"));
+
+    // URL สาธารณะของรูป
+    const SERVER_URL = process.env.SERVER_URL || `https://monshin-line-backend.onrender.com`;
+    const imageUrl = `${SERVER_URL}/temp/${filename}`;
+
+    // ส่งรูปเข้ากลุ่ม LINE
+    await client.pushMessage({
+      to: groupId,
+      messages: [
+        {
+          type: "image",
+          originalContentUrl: imageUrl,
+          previewImageUrl: imageUrl,
+        },
+      ],
+    });
+
+    // ลบไฟล์หลังจาก 60 วินาที
+    setTimeout(() => {
+      try { fs.unlinkSync(filepath); } catch (e) {}
+    }, 60000);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("send-slip error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // ─── LINE Webhook ──────────────────────────────────────────────────────────────
-// ต้องใช้ raw body สำหรับ verify signature
 app.post(
   "/webhook",
   line.middleware(lineConfig),
   async (req, res) => {
-    res.sendStatus(200); // ตอบ LINE ก่อนเสมอ
+    res.sendStatus(200);
     const events = req.body.events;
     for (const event of events) {
       await handleEvent(event);
@@ -35,20 +85,12 @@ app.post(
 
 // ─── Event Handler ─────────────────────────────────────────────────────────────
 async function handleEvent(event) {
-  // รับเฉพาะ message event ในกลุ่มหรือห้อง
   if (event.type !== "message") return;
   if (!["group", "room"].includes(event.source.type)) return;
 
   const replyToken = event.replyToken;
   const groupId = event.source.groupId || event.source.roomId;
 
-  // ─── กรณีส่งรูป: ตรวจสอบสลิปผ่าน Thunder API ───
-  if (event.message.type === "image") {
-    await handleSlipImage(replyToken, event.message.id, groupId);
-    return;
-  }
-
-  // ─── กรณีส่งข้อความ: เปิดฟอร์ม LIFF ───
   if (event.message.type === "text") {
     const text = event.message.text.trim().toLowerCase();
     if (text === "ฝากเงิน" || text === "รายงาน" || text === "เปิดฟอร์ม") {
@@ -57,81 +99,6 @@ async function handleEvent(event) {
         messages: [buildLiffMessage()],
       });
     }
-  }
-}
-
-// ─── ตรวจสอบสลิปกับ Thunder API ───────────────────────────────────────────────
-async function handleSlipImage(replyToken, messageId, groupId) {
-  try {
-    // ดึงรูปจาก LINE
-    const stream = await client.getMessageContent(messageId);
-    const chunks = [];
-    for await (const chunk of stream) chunks.push(chunk);
-    const imageBuffer = Buffer.concat(chunks);
-    const base64Image = imageBuffer.toString("base64");
-
-    // ส่งไป Thunder API
-    const response = await axios.post(
-      "https://api.thunder.in.th/v2/verify/bank",
-      { image: base64Image },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.THUNDER_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    const data = response.data;
-
-    if (data.success) {
-      const d = data.data;
-      const amount = d.amount?.amount || 0;
-      const senderName = d.sender?.account?.name?.th || "—";
-      const senderBank = d.sender?.bank?.short || "—";
-      const receiverName = d.receiver?.account?.name?.th || "—";
-      const receiverBank = d.receiver?.bank?.short || "—";
-      const transRef = d.transRef || "—";
-
-      await client.replyMessage({
-        replyToken,
-        messages: [
-          {
-            type: "text",
-            text:
-              `✅ ตรวจสอบสลิปสำเร็จ\n` +
-              `────────────────────\n` +
-              `💰 จำนวน : ${amount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท\n` +
-              `👤 โอนจาก : ${senderName} (${senderBank})\n` +
-              `🏦 เข้าบัญชี : ${receiverName} (${receiverBank})\n` +
-              `🔖 อ้างอิง : ${transRef}\n` +
-              `────────────────────\n` +
-              `✔️ บันทึกเรียบร้อยแล้ว`,
-          },
-        ],
-      });
-    } else {
-      await client.replyMessage({
-        replyToken,
-        messages: [
-          {
-            type: "text",
-            text: "⚠️ ตรวจสอบสลิปไม่สำเร็จ\nกรุณาลองใหม่อีกครั้ง หรือส่งสลิปที่ชัดเจนกว่านี้",
-          },
-        ],
-      });
-    }
-  } catch (err) {
-    console.error("Thunder API error:", err.message);
-    await client.replyMessage({
-      replyToken,
-      messages: [
-        {
-          type: "text",
-          text: "❌ เกิดข้อผิดพลาดในการตรวจสอบสลิป\nกรุณาติดต่อแอดมิน",
-        },
-      ],
-    });
   }
 }
 
