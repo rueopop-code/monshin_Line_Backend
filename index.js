@@ -15,7 +15,7 @@ const lineConfig = {
 const client = new line.messagingApi.MessagingApiClient(lineConfig);
 
 // ─── JSON body parser (รับ base64 รูปใหญ่ได้) ─────────────────────────────────
-app.use(express.json({ limit: "20mb" }));
+// JSON parser เฉพาะ /send-slip เท่านั้น (ไม่ให้ขัดกับ LINE Webhook)
 
 // ─── Serve LIFF HTML + temp images ────────────────────────────────────────────
 app.use(express.static(path.join(__dirname, "public")));
@@ -25,7 +25,7 @@ app.get("/", (req, res) => {
 });
 
 // ─── API: รับรูปสลิปจาก LIFF แล้วส่งเข้ากลุ่ม LINE ───────────────────────────
-app.post("/send-slip", async (req, res) => {
+app.post("/send-slip", express.json({ limit: "20mb" }), async (req, res) => {
   try {
     const { base64Image, groupId } = req.body;
     if (!base64Image || !groupId) {
