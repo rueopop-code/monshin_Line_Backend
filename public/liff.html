@@ -561,9 +561,13 @@
         `🖼️ สลิปแนบด้านล่าง`,
     };
     try {
-      await liff.sendMessages([msg]);
-      showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
-      setTimeout(() => liff.closeWindow(), 1500);
+      const reminderMsg = {
+        type: "text",
+        text: "📎 กรุณาส่งรูปสลิปโอนเงินในกลุ่มด้วยนะครับ 🙏"
+      };
+      await liff.sendMessages([msg, reminderMsg]);
+      showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว! อย่าลืมส่งรูปสลิปด้วยนะครับ");
+      setTimeout(() => liff.closeWindow(), 2500);
     } catch (err) {
       showToast("❌ ส่งไม่สำเร็จ: " + err.message);
       btn.disabled = false;
