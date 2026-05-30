@@ -570,24 +570,36 @@
         const groupId = ctx.groupId || ctx.roomId;
         if (groupId) {
           try {
-            // อัปโหลดไป Cloudinary
+            // แปลง base64 เป็น Blob แล้วอัปโหลดไป Cloudinary
+            const base64Data = slipBase64.split(",")[1];
+            const mimeType = slipBase64.split(";")[0].split(":")[1];
+            const byteChars = atob(base64Data);
+            const byteArr = new Uint8Array(byteChars.length);
+            for (let i = 0; i < byteChars.length; i++) {
+              byteArr[i] = byteChars.charCodeAt(i);
+            }
+            const blob = new Blob([byteArr], { type: mimeType });
+
             const formData = new FormData();
-            const blob = await (await fetch(slipBase64)).blob();
-            formData.append("file", blob);
+            formData.append("file", blob, "slip.jpg");
             formData.append("upload_preset", "monshin_slip");
-            formData.append("cloud_name", "djipbjxxj");
+
             const cdnRes = await fetch("https://api.cloudinary.com/v1_1/djipbjxxj/image/upload", {
               method: "POST",
               body: formData
             });
             const cdnData = await cdnRes.json();
-            const imageUrl = cdnData.secure_url;
-            // ส่ง URL รูปไปให้ Backend push เข้ากลุ่ม
-            fetch("https://monshin-line-backend.onrender.com/send-slip", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ imageUrl, groupId })
-            }).catch(e => console.error("slip error:", e));
+            console.log("Cloudinary response:", JSON.stringify(cdnData));
+
+            if (cdnData.secure_url) {
+              fetch("https://monshin-line-backend.onrender.com/send-slip", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ imageUrl: cdnData.secure_url, groupId })
+              }).catch(e => console.error("slip error:", e));
+            } else {
+              console.error("Cloudinary failed:", cdnData);
+            }
           } catch(e) {
             console.error("Cloudinary error:", e);
           }
