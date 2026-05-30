@@ -346,6 +346,20 @@
   <!-- วันที่ (hidden) -->
   <input type="date" id="dep-date" style="display:none" oninput="updateDateDisplay();calc()" />
 
+  <!-- ชื่อผู้ฝาก -->
+  <div class="section">
+    <p class="section-label">ผู้ฝากเงิน</p>
+    <div class="card">
+      <div class="field">
+        <div class="field-icon red">👤</div>
+        <div class="field-body">
+          <p class="field-label">ชื่อผู้ฝาก</p>
+          <input type="text" id="depositor-name" placeholder="ระบุชื่อผู้ฝาก" />
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ข้อมูลกะ -->
   <div class="section">
     <p class="section-label">ข้อมูลกะ</p>
@@ -388,6 +402,24 @@
         </div>
         <span class="field-unit">บาท</span>
       </div>
+      <div class="field">
+        <div class="field-icon red">⚖️</div>
+        <div class="field-body">
+          <p class="field-label">ยอดผลต่าง</p>
+          <input type="number" id="diff-amount" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+        </div>
+        <span class="field-unit">บาท</span>
+      </div>
+      <div class="field">
+        <div class="field-icon red">🔢</div>
+        <div class="field-body">
+          <p class="field-label">ประเภทผลต่าง</p>
+          <select id="diff-type" onchange="calc()" style="width:100%;border:none;outline:none;font-size:16px;font-family:'Sarabun',sans-serif;color:var(--text);font-weight:500;background:transparent;-webkit-appearance:none;padding:0;">
+            <option value="plus">✅ ผลบวก (เงินเกิน)</option>
+            <option value="minus">❌ ผลลบ (เงินขาด)</option>
+          </select>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -421,6 +453,20 @@
       <div class="result-row">
         <span class="result-label">เงินคืนเข้ากะ</span>
         <span class="result-val green-val" id="r-remaining">0.00 บาท</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- หมายเหตุ -->
+  <div class="section">
+    <p class="section-label">หมายเหตุ</p>
+    <div class="card">
+      <div class="field">
+        <div class="field-icon gold">📝</div>
+        <div class="field-body">
+          <p class="field-label">หมายเหตุ (ถ้ามี)</p>
+          <input type="text" id="note" placeholder="ระบุหมายเหตุ..." />
+        </div>
       </div>
     </div>
   </div>
@@ -497,8 +543,10 @@
     const totalSales = parseFloat(document.getElementById("total-sales").value) || 0;
     const transfer   = parseFloat(document.getElementById("transfer").value) || 0;
     const deposit    = parseFloat(document.getElementById("deposit").value) || 0;
+    const diffAmt    = parseFloat(document.getElementById("diff-amount").value) || 0;
+    const diffType   = document.getElementById("diff-type").value;
     const cashSales  = totalSales - transfer;
-    const totalCash  = cashIn + cashSales;
+    const totalCash  = cashIn + cashSales + (diffType === "plus" ? diffAmt : -diffAmt);
     const remaining  = totalCash - deposit;
     document.getElementById("r-cash-sales").textContent = fmt(cashSales) + " บาท";
     document.getElementById("r-total-cash").textContent  = fmt(totalCash) + " บาท";
@@ -595,6 +643,29 @@
           console.error("Cloudinary error:", e);
         }
       }
+
+      // บันทึกข้อมูลลง Supabase
+      const ctx2 = liff.getContext();
+      const gId = ctx2.groupId || ctx2.roomId || "";
+      fetch("https://monshin-line-backend.onrender.com/save-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          report_date: document.getElementById("dep-date").value,
+          cash_in: parseFloat(document.getElementById("cash-in").value) || 0,
+          total_sales: parseFloat(document.getElementById("total-sales").value) || 0,
+          transfer: parseFloat(document.getElementById("transfer").value) || 0,
+          cash_sales: parseFloat(document.getElementById("cash-sales").value.replace(/,/g,"")) || 0,
+          total_cash: parseFloat(document.getElementById("total-cash").value.replace(/,/g,"")) || 0,
+          deposit: parseFloat(document.getElementById("deposit").value) || 0,
+          remaining: parseFloat(document.getElementById("remaining").value.replace(/,/g,"")) || 0,
+          depositor_name: document.getElementById("depositor-name").value || "",
+          diff_amount: parseFloat(document.getElementById("diff-amount").value) || 0,
+          diff_type: document.getElementById("diff-type").value,
+          note: document.getElementById("note").value || "",
+          group_id: gId
+        })
+      }).catch(e => console.error("save error:", e));
 
       // ส่งข้อความรายงานก่อน
       await liff.sendMessages([msg]);
