@@ -564,16 +564,33 @@
       // ส่งข้อความรายงานเข้ากลุ่ม
       await liff.sendMessages([msg]);
 
-      // ส่งรูปสลิปผ่าน Backend
+      // อัปโหลดสลิปไป Cloudinary แล้วส่งเข้ากลุ่ม
       if (slipBase64) {
         const ctx = liff.getContext();
         const groupId = ctx.groupId || ctx.roomId;
         if (groupId) {
-          fetch("https://monshin-line-backend.onrender.com/send-slip", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ base64Image: slipBase64, groupId })
-          }).catch(e => console.error("slip error:", e));
+          try {
+            // อัปโหลดไป Cloudinary
+            const formData = new FormData();
+            const blob = await (await fetch(slipBase64)).blob();
+            formData.append("file", blob);
+            formData.append("upload_preset", "monshin_slip");
+            formData.append("cloud_name", "djipbjxxj");
+            const cdnRes = await fetch("https://api.cloudinary.com/v1_1/djipbjxxj/image/upload", {
+              method: "POST",
+              body: formData
+            });
+            const cdnData = await cdnRes.json();
+            const imageUrl = cdnData.secure_url;
+            // ส่ง URL รูปไปให้ Backend push เข้ากลุ่ม
+            fetch("https://monshin-line-backend.onrender.com/send-slip", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageUrl, groupId })
+            }).catch(e => console.error("slip error:", e));
+          } catch(e) {
+            console.error("Cloudinary error:", e);
+          }
         }
       }
 
