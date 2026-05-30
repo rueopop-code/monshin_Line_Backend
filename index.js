@@ -101,25 +101,95 @@ async function handleEvent(event) {
       const monthStr = text.replace("เดือน:", "").trim();
       const msg = await getMonthReportByName(groupId, monthStr);
       await client.replyMessage({ replyToken, messages: [msg] });
+
+    } else if (text === "ประวัติ") {
+      await client.replyMessage({ replyToken, messages: [buildHistoryMonthMenu()] });
+
+    } else if (text.startsWith("ประวัติเดือน:")) {
+      const monthStr = text.replace("ประวัติเดือน:", "").trim();
+      const msg = await buildHistoryDateMenu(groupId, monthStr);
+      await client.replyMessage({ replyToken, messages: [msg] });
+
+    } else if (text.startsWith("ประวัติวันที่:")) {
+      const dateStr = text.replace("ประวัติวันที่:", "").trim();
+      const msgs = await getHistoryByDate(groupId, dateStr);
+      await client.replyMessage({ replyToken, messages: msgs.slice(0, 5) });
     }
   }
 }
 
-// ─── ดึงยอดวันนี้ ──────────────────────────────────────────────────────────────
+// ─── ดึงยอดวันนี้ (แสดงทุกกะ แยกตามชื่อผู้ฝาก) ────────────────────────────────
 async function getTodayReport(groupId) {
   try {
     const today = new Date().toISOString().split("T")[0];
     const data = await supabase(
-      `/reports?report_date=eq.${today}&group_id=eq.${groupId}&order=created_at.desc&limit=1`
+      `/reports?report_date=eq.${today}&group_id=eq.${groupId}&order=created_at.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📊 ยังไม่มีรายงานวันนี้ครับ\nพิมพ์ \"ฝากเงิน\" เพื่อเปิดฟอร์ม" };
     }
-    const r = data[0];
-    return buildReportFlex("📊 ยอดวันนี้", formatThaiDate(r.report_date), r);
+    if (data.length === 1) {
+      return buildReportFlex("📊 ยอดวันนี้", formatThaiDate(data[0].report_date), data[0]);
+    }
+    // หลายกะ — แสดงสรุปรวม + แต่ละกะ
+    return buildTodayMultiFlex(data, formatThaiDate(today));
   } catch (err) {
     return { type: "text", text: "❌ ดึงข้อมูลไม่ได้ครับ: " + err.message };
   }
+}
+
+function buildTodayMultiFlex(rows, dateStr) {
+  const totalSales = rows.reduce((s, r) => s + Number(r.total_sales || 0), 0);
+  const totalDeposit = rows.reduce((s, r) => s + Number(r.deposit || 0), 0);
+  const totalRemaining = rows.reduce((s, r) => s + Number(r.remaining || 0), 0);
+
+  const shiftRows = rows.map((r, i) => ({
+    type: "box", layout: "vertical", margin: "md",
+    borderWidth: "1px", borderColor: "#DDDDDD", cornerRadius: "md",
+    paddingAll: "sm",
+    contents: [
+      {
+        type: "box", layout: "horizontal",
+        contents: [
+          { type: "text", text: "กะที่ " + (i+1) + " — " + (r.depositor_name || "ไม่ระบุ"), size: "sm", weight: "bold", color: "#C0392B", flex: 1 },
+          { type: "text", text: "฿" + fmt(r.total_sales), size: "sm", color: "#555555", align: "end" }
+        ]
+      },
+      buildRow("💵 เข้ากะ", fmt(r.cash_in) + " บาท"),
+      buildRow("🏦 ฝาก", fmt(r.deposit) + " บาท"),
+      buildRow("🪙 คืนกะ", fmt(r.remaining) + " บาท", Number(r.remaining) >= 0 ? "#27AE60" : "#E74C3C")
+    ]
+  }));
+
+  return {
+    type: "flex", altText: "ยอดวันนี้ " + dateStr + " (" + rows.length + " กะ)",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical", backgroundColor: "#C0392B", paddingAll: "md",
+        contents: [
+          { type: "text", text: "🏪 มนชิน ซัพพลาย", color: "#FFFFFF", size: "sm", weight: "bold" },
+          { type: "text", text: "📊 ยอดวันนี้ (" + rows.length + " กะ)", color: "#FFFFFF", size: "lg", weight: "bold" },
+          { type: "text", text: dateStr, color: "#FFCCCC", size: "sm" }
+        ]
+      },
+      body: {
+        type: "box", layout: "vertical", spacing: "sm",
+        contents: [
+          buildRow("🛒 ยอดขายรวม", fmt(totalSales) + " บาท"),
+          buildRow("🏦 ฝากรวม", fmt(totalDeposit) + " บาท"),
+          buildRow("🪙 คืนกะรวม", fmt(totalRemaining) + " บาท", "#27AE60"),
+          { type: "separator", margin: "md" },
+          { type: "text", text: "รายละเอียดแต่ละกะ", size: "sm", weight: "bold", color: "#555555", margin: "md" },
+          ...shiftRows
+        ]
+      },
+      footer: {
+        type: "box", layout: "horizontal", spacing: "sm",
+        contents: [buildBtn("📅 เดือนนี้", "ยอดเดือนนี้"), buildBtn("🗓️ เลือกเดือน", "สรุปยอด")]
+      }
+    }
+  };
 }
 
 // ─── ดึงยอดเดือนนี้ ────────────────────────────────────────────────────────────
@@ -267,6 +337,165 @@ function buildBtn(label, text) {
   };
 }
 
+// ─── ประวัติ: เลือกเดือน ──────────────────────────────────────────────────────
+function buildHistoryMonthMenu() {
+  const now = new Date();
+  const curMonth = now.getMonth();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const idx = (curMonth - i + 12) % 12;
+    months.push({ label: thaiMonths[idx], text: "ประวัติเดือน:" + thaiMonths[idx] });
+  }
+  return {
+    type: "flex", altText: "เลือกเดือนที่ต้องการดูประวัติ",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical", backgroundColor: "#2C3E50", paddingAll: "md",
+        contents: [
+          { type: "text", text: "📂 ดูประวัติรายงาน", color: "#FFFFFF", size: "md", weight: "bold" },
+          { type: "text", text: "เลือกเดือนที่ต้องการ", color: "#BDC3C7", size: "sm" }
+        ]
+      },
+      body: {
+        type: "box", layout: "vertical", spacing: "sm",
+        contents: [
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: months.slice(0,3).map(m => ({
+              type: "button", style: "secondary", height: "sm",
+              action: { type: "message", label: m.label, text: m.text }
+            }))
+          },
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: months.slice(3,6).map(m => ({
+              type: "button",
+              style: m.label === thaiMonths[curMonth] ? "primary" : "secondary",
+              color: m.label === thaiMonths[curMonth] ? "#2C3E50" : undefined,
+              height: "sm",
+              action: { type: "message", label: m.label + (m.label === thaiMonths[curMonth] ? " ●" : ""), text: m.text }
+            }))
+          }
+        ]
+      }
+    }
+  };
+}
+
+// ─── ประวัติ: เลือกวันที่ ──────────────────────────────────────────────────────
+async function buildHistoryDateMenu(groupId, monthName) {
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const monthIdx = thaiMonths.indexOf(monthName);
+    if (monthIdx === -1) return { type: "text", text: "❌ ไม่พบเดือน: " + monthName };
+    const month = String(monthIdx + 1).padStart(2, "0");
+    const from = year + "-" + month + "-01";
+    const to = year + "-" + month + "-31";
+    const data = await supabase(
+      "/reports?report_date=gte." + from + "&report_date=lte." + to + "&group_id=eq." + groupId + "&order=report_date.asc"
+    );
+    if (!data || data.length === 0) {
+      return { type: "text", text: "📂 ไม่มีรายงานเดือน" + monthName + " ครับ" };
+    }
+    // หาวันที่ที่มีข้อมูล (unique)
+    const uniqueDates = [...new Set(data.map(r => r.report_date))];
+    const dateButtons = uniqueDates.map(d => {
+      const [y, m, day] = d.split("-");
+      const label = parseInt(day) + " " + thaiMonths[parseInt(m)-1];
+      const count = data.filter(r => r.report_date === d).length;
+      return {
+        type: "button", style: "secondary", height: "sm",
+        action: { type: "message", label: label + " (" + count + ")", text: "ประวัติวันที่:" + d }
+      };
+    });
+
+    // แบ่งเป็นแถวละ 3 ปุ่ม
+    const rows = [];
+    for (let i = 0; i < dateButtons.length; i += 3) {
+      rows.push({ type: "box", layout: "horizontal", spacing: "sm", contents: dateButtons.slice(i, i+3) });
+    }
+
+    return {
+      type: "flex", altText: "เลือกวันที่ — " + monthName,
+      contents: {
+        type: "bubble",
+        header: {
+          type: "box", layout: "vertical", backgroundColor: "#2C3E50", paddingAll: "md",
+          contents: [
+            { type: "text", text: "📂 ประวัติเดือน" + monthName, color: "#FFFFFF", size: "md", weight: "bold" },
+            { type: "text", text: "กดวันที่ต้องการดู (" + data.length + " รายการ)", color: "#BDC3C7", size: "sm" }
+          ]
+        },
+        body: { type: "box", layout: "vertical", spacing: "sm", contents: rows }
+      }
+    };
+  } catch(err) {
+    return { type: "text", text: "❌ เกิดข้อผิดพลาด: " + err.message };
+  }
+}
+
+// ─── ประวัติ: ดูรายงาน + สลิปของวันนั้น ────────────────────────────────────────
+async function getHistoryByDate(groupId, dateStr) {
+  try {
+    const data = await supabase(
+      "/reports?report_date=eq." + dateStr + "&group_id=eq." + groupId + "&order=created_at.asc"
+    );
+    if (!data || data.length === 0) {
+      return [{ type: "text", text: "📂 ไม่มีรายงานวันที่ " + formatThaiDate(dateStr) + " ครับ" }];
+    }
+
+    const msgs = [];
+
+    // Header text
+    msgs.push({
+      type: "text",
+      text: "📂 ประวัติวันที่ " + formatThaiDate(dateStr) + "
+มีทั้งหมด " + data.length + " รายการ"
+    });
+
+    // แต่ละรายการ
+    for (let i = 0; i < data.length && i < 4; i++) {
+      const r = data[i];
+      const depositor = r.depositor_name || "ไม่ระบุ";
+      msgs.push({
+        type: "flex", altText: "รายการที่ " + (i+1) + " — " + depositor,
+        contents: {
+          type: "bubble",
+          header: {
+            type: "box", layout: "vertical", backgroundColor: "#2C3E50", paddingAll: "md",
+            contents: [
+              { type: "text", text: "📋 รายการที่ " + (i+1) + " — " + depositor, color: "#FFFFFF", size: "sm", weight: "bold" },
+              { type: "text", text: formatThaiDate(r.report_date), color: "#BDC3C7", size: "xs" }
+            ]
+          },
+          body: {
+            type: "box", layout: "vertical", spacing: "sm",
+            contents: [
+              buildRow("💵 ยอดเข้ากะ", fmt(r.cash_in) + " บาท"),
+              buildRow("🛒 ยอดขาย", fmt(r.total_sales) + " บาท"),
+              buildRow("📲 ยอดโอน", fmt(r.transfer) + " บาท"),
+              buildRow("🏦 ฝากธนาคาร", fmt(r.deposit) + " บาท"),
+              buildRow("🪙 เงินคืนกะ", fmt(r.remaining) + " บาท", Number(r.remaining) >= 0 ? "#27AE60" : "#E74C3C"),
+              ...(r.note ? [buildRow("📝 หมายเหตุ", r.note)] : []),
+              ...(r.diff_amount > 0 ? [buildRow(r.diff_type === "plus" ? "✅ ผลบวก" : "❌ ผลลบ", fmt(r.diff_amount) + " บาท")] : []),
+              ...(r.slip_url ? [{
+                type: "button", style: "primary", color: "#27AE60",
+                action: { type: "uri", label: "🖼️ ดูสลิป", uri: r.slip_url }
+              }] : [{ type: "text", text: "ไม่มีสลิป", size: "xs", color: "#999999" }])
+            ]
+          }
+        }
+      });
+    }
+
+    return msgs;
+  } catch(err) {
+    return [{ type: "text", text: "❌ เกิดข้อผิดพลาด: " + err.message }];
+  }
+}
+
 function buildLiffMessage() {
   return {
     type: "template", altText: "กดเพื่อเปิดฟอร์มฝากเงิน",
@@ -306,6 +535,12 @@ function buildMenuMessage() {
             contents: [
               { type: "button", style: "primary", color: "#27AE60", action: { type: "message", label: "📅 ยอดเดือนนี้", text: "ยอดเดือนนี้" } },
               { type: "button", style: "primary", color: "#E67E22", action: { type: "message", label: "🗓️ สรุปยอด", text: "สรุปยอด" } }
+            ]
+          },
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: [
+              { type: "button", style: "primary", color: "#2C3E50", action: { type: "message", label: "📂 ประวัติ", text: "ประวัติ" } }
             ]
           }
         ]
