@@ -630,6 +630,7 @@
           });
           const cdnData = await cdnRes.json();
           if (cdnData.secure_url) {
+            window._slipUrl = cdnData.secure_url; // เก็บ URL สลิปไว้
             const originalUrl = cdnData.secure_url.replace(/\.\w+$/, "") + ".jpg";
             const previewUrl = cdnData.secure_url.replace("/upload/", "/upload/w_400,q_60,f_jpg/").replace(/\.\w+$/, "") + ".jpg";
             imageMessage = {
@@ -663,6 +664,7 @@
           diff_amount: parseFloat(document.getElementById("diff-amount").value) || 0,
           diff_type: document.getElementById("diff-type").value,
           note: document.getElementById("note").value || "",
+          slip_url: window._slipUrl || "",
           group_id: gId
         })
       }).catch(e => console.error("save error:", e));
