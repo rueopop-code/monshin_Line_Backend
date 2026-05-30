@@ -669,11 +669,31 @@
         }
       }
 
-      // 2. บันทึกข้อมูลลง Supabase (รอผล)
+      // 2. ส่งข้อความรายงานเข้ากลุ่ม LINE ก่อน
+      btn.innerHTML = "⏳ กำลังส่งเข้ากลุ่ม...";
+      await liff.sendMessages([msg]);
+
+      // 3. ส่งรูปสลิปแยก
+      if (imageMessage) {
+        try {
+          await liff.sendMessages([imageMessage]);
+          showToast("✅ ส่งรายงานและสลิปเข้ากลุ่มแล้ว!");
+        } catch(imgErr) {
+          console.error("Image send error:", imgErr);
+          showToast("✅ ส่งรายงานแล้ว (สลิปส่งไม่ได้: " + imgErr.message + ")");
+        }
+      } else {
+        showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
+      }
+
+      // 4. บันทึกข้อมูลลง Supabase (ทำหลัง LINE ส่งเสร็จ + timeout 60s)
       btn.innerHTML = "⏳ กำลังบันทึกข้อมูล...";
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
         const saveRes = await fetch("https://monshin-line-backend.onrender.com/save-report", {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             report_date:    document.getElementById("dep-date").value,
@@ -692,32 +712,16 @@
             group_id:       gId
           })
         });
+        clearTimeout(timeoutId);
         if (!saveRes.ok) {
           const errJson = await saveRes.json().catch(() => ({}));
           console.warn("save-report failed:", errJson);
         }
       } catch(e) {
-        console.error("save error:", e);
-        // ไม่ block การส่ง LINE ถ้า save ไม่ได้
+        console.error("save error:", e.name, e.message);
       }
 
-      // 3. ส่งข้อความรายงานเข้ากลุ่ม LINE
-      btn.innerHTML = "⏳ กำลังส่งเข้ากลุ่ม...";
-      await liff.sendMessages([msg]);
-
-      // 4. ส่งรูปสลิปแยก
-      if (imageMessage) {
-        try {
-          await liff.sendMessages([imageMessage]);
-          showToast("✅ ส่งรายงานและสลิปเข้ากลุ่มแล้ว!");
-        } catch(imgErr) {
-          console.error("Image send error:", imgErr);
-          showToast("✅ ส่งรายงานแล้ว (สลิปส่งไม่ได้: " + imgErr.message + ")");
-        }
-      } else {
-        showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
-      }
-      setTimeout(() => liff.closeWindow(), 2500);
+      setTimeout(() => liff.closeWindow(), 1000);
 
     } catch (err) {
       console.error("sendToLine error:", err);
