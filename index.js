@@ -181,11 +181,11 @@ function buildReportFlex(title, dateStr, r) {
     contents: {
       type: "bubble",
       header: {
-        type: "box", layout: "vertical", backgroundColor: "#C0392B",
+        type: "box", layout: "vertical", backgroundColor: "#C0392B", paddingAll: "md",
         contents: [
           { type: "text", text: "🏪 มนชิน ซัพพลาย", color: "#FFFFFF", size: "sm", weight: "bold" },
           { type: "text", text: title, color: "#FFFFFF", size: "lg", weight: "bold" },
-          { type: "text", text: dateStr, color: "rgba(255,255,255,0.8)", size: "sm" }
+          { type: "text", text: dateStr, color: "#FFCCCC", size: "sm" }
         ]
       },
       body: {
@@ -222,11 +222,11 @@ function buildMonthFlex(rows, monthLabel) {
     contents: {
       type: "bubble",
       header: {
-        type: "box", layout: "vertical", backgroundColor: "#C0392B",
+        type: "box", layout: "vertical", backgroundColor: "#C0392B", paddingAll: "md",
         contents: [
           { type: "text", text: "🏪 มนชิน ซัพพลาย", color: "#FFFFFF", size: "sm", weight: "bold" },
           { type: "text", text: "📅 สรุปยอดประจำเดือน", color: "#FFFFFF", size: "lg", weight: "bold" },
-          { type: "text", text: monthLabel + " (" + rows.length + " วัน)", color: "rgba(255,255,255,0.8)", size: "sm" }
+          { type: "text", text: monthLabel + " (" + rows.length + " วัน)", color: "#FFCCCC", size: "sm" }
         ]
       },
       body: {
@@ -283,10 +283,10 @@ function buildMenuMessage() {
     contents: {
       type: "bubble",
       header: {
-        type: "box", layout: "vertical", backgroundColor: "#C0392B",
+        type: "box", layout: "vertical", backgroundColor: "#C0392B", paddingAll: "md",
         contents: [
           { type: "text", text: "🏪 มนชิน ซัพพลาย", color: "#FFFFFF", size: "md", weight: "bold" },
-          { type: "text", text: "เลือกคำสั่งที่ต้องการ", color: "rgba(255,255,255,0.8)", size: "sm" }
+          { type: "text", text: "เลือกคำสั่งที่ต้องการ", color: "#FFCCCC", size: "sm" }
         ]
       },
       body: {
@@ -326,7 +326,7 @@ function buildSummaryMenu() {
     contents: {
       type: "bubble",
       header: {
-        type: "box", layout: "vertical", backgroundColor: "#C0392B",
+        type: "box", layout: "vertical", backgroundColor: "#C0392B", paddingAll: "md",
         contents: [{ type: "text", text: "🗓️ เลือกเดือนที่ต้องการ", color: "#FFFFFF", size: "md", weight: "bold" }]
       },
       body: {
