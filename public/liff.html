@@ -582,10 +582,13 @@
           });
           const cdnData = await cdnRes.json();
           if (cdnData.secure_url) {
+            // สร้าง preview URL ขนาดเล็กผ่าน Cloudinary transformation
+            const originalUrl = cdnData.secure_url;
+            const previewUrl = originalUrl.replace("/upload/", "/upload/w_600,q_70,f_jpg/");
             imageMessage = {
               type: "image",
-              originalContentUrl: cdnData.secure_url,
-              previewImageUrl: cdnData.secure_url
+              originalContentUrl: originalUrl,
+              previewImageUrl: previewUrl
             };
           }
         } catch(e) {
