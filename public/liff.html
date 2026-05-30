@@ -580,15 +580,36 @@
     const totalSales = parseFloat(document.getElementById("total-sales").value) || 0;
     if (cashIn === 0 && totalSales === 0) { showToast("⚠️ กรุณากรอกยอดเงินก่อน"); return; }
     if (!slipBase64) { showToast("⚠️ กรุณาแนบรูปสลิปก่อน"); return; }
+
+    // ตรวจสอบว่าเปิดจาก LINE หรือเปล่า
+    if (!liff.isInClient()) {
+      showToast("⚠️ กรุณาเปิดจาก LINE เท่านั้น");
+      return;
+    }
+
     const btn = document.getElementById("submit-btn");
     btn.disabled = true;
     btn.innerHTML = "⏳ กำลังส่ง...";
-    const transfer  = parseFloat(document.getElementById("transfer").value) || 0;
-    const deposit   = parseFloat(document.getElementById("deposit").value) || 0;
-    const cashSales = totalSales - transfer;
-    const totalCash = cashIn + cashSales;
-    const remaining = totalCash - deposit;
-    const dateText  = thDate(document.getElementById("dep-date").value);
+
+    const transfer   = parseFloat(document.getElementById("transfer").value) || 0;
+    const deposit    = parseFloat(document.getElementById("deposit").value) || 0;
+    const diffAmt    = parseFloat(document.getElementById("diff-amount").value) || 0;
+    const diffType   = document.getElementById("diff-type").value;
+    const cashSales  = totalSales - transfer;
+    const totalCash  = cashIn + cashSales + (diffType === "plus" ? diffAmt : -diffAmt);
+    const remaining  = totalCash - deposit;
+    const dateText   = thDate(document.getElementById("dep-date").value);
+
+    // ดึง group_id ก่อน
+    let gId = "";
+    try {
+      const ctx2 = liff.getContext();
+      gId = ctx2.groupId || ctx2.roomId || "";
+    } catch(e) {
+      console.warn("getContext error:", e);
+    }
+
+    const slipLine = slipBase64 ? `🖼️ สลิปแนบด้านล่าง` : `📎 ไม่มีสลิป`;
     const msg = {
       type: "text",
       text:
@@ -601,25 +622,26 @@
         `🛒 ยอดขายวันนี้ : ${fmt(totalSales)} บาท\n` +
         `📲 ยอดโอน : ${fmt(transfer)} บาท\n` +
         `💰 ยอดเงินสด : ${fmt(cashSales)} บาท\n` +
+        (diffAmt > 0 ? `⚖️ ผลต่าง : ${diffType === "plus" ? "+" : "-"}${fmt(diffAmt)} บาท\n` : ``) +
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `🏧 เงินสดทั้งหมด : ${fmt(totalCash)} บาท\n` +
         `🏦 ฝากธนาคาร : ${fmt(deposit)} บาท\n` +
         `🪙 เงินคืนเข้ากะ : ${fmt(remaining)} บาท\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
-        `🖼️ สลิปแนบด้านล่าง`,
+        slipLine,
     };
+
     try {
-      // อัปโหลดสลิปไป Cloudinary
+      // 1. อัปโหลดสลิปไป Cloudinary
       let imageMessage = null;
       if (slipBase64) {
         try {
+          btn.innerHTML = "⏳ กำลังอัปโหลดสลิป...";
           const base64Data = slipBase64.split(",")[1];
           const mimeType = slipBase64.split(";")[0].split(":")[1];
           const byteChars = atob(base64Data);
           const byteArr = new Uint8Array(byteChars.length);
-          for (let i = 0; i < byteChars.length; i++) {
-            byteArr[i] = byteChars.charCodeAt(i);
-          }
+          for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
           const blob = new Blob([byteArr], { type: mimeType });
           const formData = new FormData();
           formData.append("file", blob, "slip.jpg");
@@ -628,51 +650,62 @@
             method: "POST",
             body: formData
           });
+          if (!cdnRes.ok) throw new Error("Cloudinary HTTP " + cdnRes.status);
           const cdnData = await cdnRes.json();
           if (cdnData.secure_url) {
-            window._slipUrl = cdnData.secure_url; // เก็บ URL สลิปไว้
+            window._slipUrl = cdnData.secure_url;
             const originalUrl = cdnData.secure_url.replace(/\.\w+$/, "") + ".jpg";
-            const previewUrl = cdnData.secure_url.replace("/upload/", "/upload/w_400,q_60,f_jpg/").replace(/\.\w+$/, "") + ".jpg";
-            imageMessage = {
-              type: "image",
-              originalContentUrl: originalUrl,
-              previewImageUrl: previewUrl
-            };
-            console.log("Image URLs:", originalUrl, previewUrl);
+            const previewUrl  = cdnData.secure_url.replace("/upload/", "/upload/w_400,q_60,f_jpg/").replace(/\.\w+$/, "") + ".jpg";
+            imageMessage = { type: "image", originalContentUrl: originalUrl, previewImageUrl: previewUrl };
+          } else {
+            throw new Error(cdnData.error?.message || "ไม่ได้รับ URL จาก Cloudinary");
           }
         } catch(e) {
           console.error("Cloudinary error:", e);
+          showToast("❌ อัปโหลดสลิปไม่สำเร็จ: " + e.message);
+          btn.disabled = false;
+          btn.innerHTML = "<span>📤</span> ส่งรายงานเข้ากลุ่ม LINE";
+          return;
         }
       }
 
-      // บันทึกข้อมูลลง Supabase
-      const ctx2 = liff.getContext();
-      const gId = ctx2.groupId || ctx2.roomId || "";
-      fetch("https://monshin-line-backend.onrender.com/save-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          report_date: document.getElementById("dep-date").value,
-          cash_in: parseFloat(document.getElementById("cash-in").value) || 0,
-          total_sales: parseFloat(document.getElementById("total-sales").value) || 0,
-          transfer: parseFloat(document.getElementById("transfer").value) || 0,
-          cash_sales: parseFloat(document.getElementById("cash-sales").value.replace(/,/g,"")) || 0,
-          total_cash: parseFloat(document.getElementById("total-cash").value.replace(/,/g,"")) || 0,
-          deposit: parseFloat(document.getElementById("deposit").value) || 0,
-          remaining: parseFloat(document.getElementById("remaining").value.replace(/,/g,"")) || 0,
-          depositor_name: document.getElementById("depositor-name").value || "",
-          diff_amount: parseFloat(document.getElementById("diff-amount").value) || 0,
-          diff_type: document.getElementById("diff-type").value,
-          note: document.getElementById("note").value || "",
-          slip_url: window._slipUrl || "",
-          group_id: gId
-        })
-      }).catch(e => console.error("save error:", e));
+      // 2. บันทึกข้อมูลลง Supabase (รอผล)
+      btn.innerHTML = "⏳ กำลังบันทึกข้อมูล...";
+      try {
+        const saveRes = await fetch("https://monshin-line-backend.onrender.com/save-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            report_date:    document.getElementById("dep-date").value,
+            cash_in:        cashIn,
+            total_sales:    totalSales,
+            transfer:       transfer,
+            cash_sales:     cashSales,
+            total_cash:     totalCash,
+            deposit:        deposit,
+            remaining:      remaining,
+            depositor_name: document.getElementById("depositor-name").value || "",
+            diff_amount:    diffAmt,
+            diff_type:      diffType,
+            note:           document.getElementById("note").value || "",
+            slip_url:       window._slipUrl || "",
+            group_id:       gId
+          })
+        });
+        if (!saveRes.ok) {
+          const errJson = await saveRes.json().catch(() => ({}));
+          console.warn("save-report failed:", errJson);
+        }
+      } catch(e) {
+        console.error("save error:", e);
+        // ไม่ block การส่ง LINE ถ้า save ไม่ได้
+      }
 
-      // ส่งข้อความรายงานก่อน
+      // 3. ส่งข้อความรายงานเข้ากลุ่ม LINE
+      btn.innerHTML = "⏳ กำลังส่งเข้ากลุ่ม...";
       await liff.sendMessages([msg]);
 
-      // ส่งรูปสลิปแยก
+      // 4. ส่งรูปสลิปแยก
       if (imageMessage) {
         try {
           await liff.sendMessages([imageMessage]);
@@ -685,7 +718,9 @@
         showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
       }
       setTimeout(() => liff.closeWindow(), 2500);
+
     } catch (err) {
+      console.error("sendToLine error:", err);
       showToast("❌ ส่งไม่สำเร็จ: " + err.message);
       btn.disabled = false;
       btn.innerHTML = "<span>📤</span> ส่งรายงานเข้ากลุ่ม LINE";
