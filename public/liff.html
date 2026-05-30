@@ -686,42 +686,31 @@
         showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
       }
 
-      // 4. บันทึกข้อมูลลง Supabase (ทำหลัง LINE ส่งเสร็จ + timeout 60s)
-      btn.innerHTML = "⏳ กำลังบันทึกข้อมูล...";
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
-        const saveRes = await fetch("https://monshin-line-backend.onrender.com/save-report", {
-          method: "POST",
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            report_date:    document.getElementById("dep-date").value,
-            cash_in:        cashIn,
-            total_sales:    totalSales,
-            transfer:       transfer,
-            cash_sales:     cashSales,
-            total_cash:     totalCash,
-            deposit:        deposit,
-            remaining:      remaining,
-            depositor_name: document.getElementById("depositor-name").value || "",
-            diff_amount:    diffAmt,
-            diff_type:      diffType,
-            note:           document.getElementById("note").value || "",
-            slip_url:       window._slipUrl || "",
-            group_id:       gId
-          })
-        });
-        clearTimeout(timeoutId);
-        if (!saveRes.ok) {
-          const errJson = await saveRes.json().catch(() => ({}));
-          console.warn("save-report failed:", errJson);
-        }
-      } catch(e) {
-        console.error("save error:", e.name, e.message);
-      }
+      // 4. บันทึกข้อมูลลง Supabase ด้วย keepalive (ส่งได้แม้หน้าต่างปิด)
+      const savePayload = JSON.stringify({
+        report_date:    document.getElementById("dep-date").value,
+        cash_in:        cashIn,
+        total_sales:    totalSales,
+        transfer:       transfer,
+        cash_sales:     cashSales,
+        total_cash:     totalCash,
+        deposit:        deposit,
+        remaining:      remaining,
+        depositor_name: document.getElementById("depositor-name").value || "",
+        diff_amount:    diffAmt,
+        diff_type:      diffType,
+        note:           document.getElementById("note").value || "",
+        slip_url:       window._slipUrl || "",
+        group_id:       gId
+      });
+      fetch("https://monshin-line-backend.onrender.com/save-report", {
+        method: "POST",
+        keepalive: true,
+        headers: { "Content-Type": "application/json" },
+        body: savePayload
+      }).catch(e => console.error("save error:", e));
 
-      setTimeout(() => liff.closeWindow(), 1000);
+      liff.closeWindow();
 
     } catch (err) {
       console.error("sendToLine error:", err);
