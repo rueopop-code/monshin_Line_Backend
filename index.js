@@ -451,8 +451,7 @@ async function getHistoryByDate(groupId, dateStr) {
     // Header text
     msgs.push({
       type: "text",
-      text: "📂 ประวัติวันที่ " + formatThaiDate(dateStr) + "
-มีทั้งหมด " + data.length + " รายการ"
+      text: "📂 ประวัติวันที่ " + formatThaiDate(dateStr) + "\nมีทั้งหมด " + data.length + " รายการ"
     });
 
     // แต่ละรายการ
