@@ -2,7 +2,6 @@ require("dotenv").config();
 const express = require("express");
 const line = require("@line/bot-sdk");
 const path = require("path");
-const fs = require("fs");
 
 const app = express();
 
@@ -14,30 +13,18 @@ const client = new line.messagingApi.MessagingApiClient(lineConfig);
 
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
-app.use("/temp", express.static(path.join(__dirname, "temp")));
 
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "liff.html"));
 });
 
-// รับสลิปจาก LIFF แล้ว push รูปเข้ากลุ่ม
-app.post("/send-slip", express.json({ limit: "20mb" }), async (req, res) => {
+// รับ URL รูปจาก Cloudinary แล้ว push เข้ากลุ่ม LINE
+app.post("/send-slip", express.json({ limit: "1mb" }), async (req, res) => {
   try {
-    const { base64Image, groupId } = req.body;
-    if (!base64Image || !groupId) {
+    const { imageUrl, groupId } = req.body;
+    if (!imageUrl || !groupId) {
       return res.status(400).json({ success: false, error: "Missing data" });
     }
-
-    const tempDir = path.join(__dirname, "temp");
-    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-
-    const filename = "slip_" + Date.now() + ".jpg";
-    const filepath = path.join(tempDir, filename);
-    const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
-    fs.writeFileSync(filepath, Buffer.from(base64Data, "base64"));
-
-    const SERVER_URL = process.env.SERVER_URL || "https://monshin-line-backend.onrender.com";
-    const imageUrl = SERVER_URL + "/temp/" + filename;
 
     await client.pushMessage({
       to: groupId,
@@ -47,10 +34,6 @@ app.post("/send-slip", express.json({ limit: "20mb" }), async (req, res) => {
         previewImageUrl: imageUrl,
       }],
     });
-
-    setTimeout(function() {
-      try { fs.unlinkSync(filepath); } catch(e) {}
-    }, 60000);
 
     res.json({ success: true });
   } catch (err) {
