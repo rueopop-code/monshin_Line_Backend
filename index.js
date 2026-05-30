@@ -16,20 +16,22 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 // ─── Supabase Helper ───────────────────────────────────────────────────────────
 async function supabase(path, method = "GET", body = null) {
-  const fetch = (await import("node-fetch")).default;
-  const opts = {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": SUPABASE_KEY,
-      "Authorization": "Bearer " + SUPABASE_KEY,
-      "Prefer": method === "POST" ? "return=minimal" : ""
-    }
+  const axios = require("axios");
+  const headers = {
+    "Content-Type": "application/json",
+    "apikey": SUPABASE_KEY,
+    "Authorization": "Bearer " + SUPABASE_KEY,
+    "Prefer": method === "POST" ? "return=minimal" : ""
   };
-  if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(SUPABASE_URL + "/rest/v1" + path, opts);
-  if (res.status === 204 || res.status === 201) return null;
-  return res.json();
+  const url = SUPABASE_URL + "/rest/v1" + path;
+  try {
+    const res = await axios({ method, url, headers, data: body || undefined });
+    if (res.status === 204 || res.status === 201) return null;
+    return res.data;
+  } catch(err) {
+    if (err.response && (err.response.status === 204 || err.response.status === 201)) return null;
+    throw err;
+  }
 }
 
 // ─── บันทึกรายงานลง Supabase ──────────────────────────────────────────────────
