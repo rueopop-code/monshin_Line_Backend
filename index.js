@@ -12,10 +12,9 @@ const lineConfig = {
 const client = new line.messagingApi.MessagingApiClient(lineConfig);
 
 // Serve static files
-app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "liff.html"));
+  res.json({ status: "ok", message: "Monshin Line Bot is running" });
 });
 
 // รับ URL รูปจาก Cloudinary แล้ว push เข้ากลุ่ม LINE
