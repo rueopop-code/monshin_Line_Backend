@@ -582,27 +582,36 @@
           });
           const cdnData = await cdnRes.json();
           if (cdnData.secure_url) {
-            // สร้าง preview URL ขนาดเล็กผ่าน Cloudinary transformation
-            const originalUrl = cdnData.secure_url;
-            const previewUrl = originalUrl.replace("/upload/", "/upload/w_600,q_70,f_jpg/");
+            const originalUrl = cdnData.secure_url.replace(/\.\w+$/, "") + ".jpg";
+            const previewUrl = cdnData.secure_url.replace("/upload/", "/upload/w_400,q_60,f_jpg/").replace(/\.\w+$/, "") + ".jpg";
             imageMessage = {
               type: "image",
               originalContentUrl: originalUrl,
               previewImageUrl: previewUrl
             };
+            console.log("Image URLs:", originalUrl, previewUrl);
           }
         } catch(e) {
           console.error("Cloudinary error:", e);
         }
       }
 
-      // ส่งข้อความรายงาน + รูปสลิปพร้อมกัน
-      const messages = [msg];
-      if (imageMessage) messages.push(imageMessage);
-      await liff.sendMessages(messages);
+      // ส่งข้อความรายงานก่อน
+      await liff.sendMessages([msg]);
 
-      showToast("✅ ส่งรายงานและสลิปเข้ากลุ่มแล้ว!");
-      setTimeout(() => liff.closeWindow(), 2000);
+      // ส่งรูปสลิปแยก
+      if (imageMessage) {
+        try {
+          await liff.sendMessages([imageMessage]);
+          showToast("✅ ส่งรายงานและสลิปเข้ากลุ่มแล้ว!");
+        } catch(imgErr) {
+          console.error("Image send error:", imgErr);
+          showToast("✅ ส่งรายงานแล้ว (สลิปส่งไม่ได้: " + imgErr.message + ")");
+        }
+      } else {
+        showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
+      }
+      setTimeout(() => liff.closeWindow(), 2500);
     } catch (err) {
       showToast("❌ ส่งไม่สำเร็จ: " + err.message);
       btn.disabled = false;
