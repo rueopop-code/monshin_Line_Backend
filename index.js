@@ -37,12 +37,35 @@ async function supabase(path, method = "GET", body = null) {
 // ─── บันทึกรายงานลง Supabase ──────────────────────────────────────────────────
 app.post("/save-report", express.json({ limit: "1mb" }), async (req, res) => {
   try {
-    const data = req.body;
+    const raw = req.body;
+
+    // ป้องกัน field ที่ไม่ตรง — map เฉพาะ column ที่มีใน table
+    const data = {
+      report_date:    raw.report_date    || new Date().toISOString().split("T")[0],
+      cash_in:        Number(raw.cash_in        || 0),
+      total_sales:    Number(raw.total_sales    || 0),
+      transfer:       Number(raw.transfer       || 0),
+      cash_sales:     Number(raw.cash_sales     || 0),
+      total_cash:     Number(raw.total_cash     || 0),
+      deposit:        Number(raw.deposit        || 0),
+      remaining:      Number(raw.remaining      || 0),
+      depositor_name: raw.depositor_name || "",
+      diff_amount:    Number(raw.diff_amount    || 0),
+      diff_type:      raw.diff_type      || "plus",
+      note:           raw.note           || "",
+      slip_url:       raw.slip_url       || "",
+      group_id:       raw.group_id       || "",
+    };
+
+    console.log("save-report payload:", JSON.stringify(data));
     await supabase("/reports", "POST", data);
+    console.log("save-report: success");
     res.json({ success: true });
   } catch (err) {
-    console.error("save-report error:", err.message);
-    res.status(500).json({ success: false, error: err.message });
+    // พิมพ์ทั้ง response body จาก Supabase เพื่อ debug
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error("save-report error:", detail);
+    res.status(500).json({ success: false, error: detail });
   }
 });
 
@@ -118,10 +141,17 @@ async function handleEvent(event) {
   }
 }
 
+// ─── helper: วันที่ปัจจุบันเวลาไทย UTC+7 ──────────────────────────────────────
+function getTodayTH() {
+  const now = new Date();
+  const th = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+  return th.toISOString().split("T")[0];
+}
+
 // ─── ดึงยอดวันนี้ (แสดงทุกกะ แยกตามชื่อผู้ฝาก) ────────────────────────────────
 async function getTodayReport(groupId) {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayTH();
     const data = await supabase(
       `/reports?report_date=eq.${today}&group_id=eq.${groupId}&order=created_at.asc`
     );
@@ -195,9 +225,9 @@ function buildTodayMultiFlex(rows, dateStr) {
 // ─── ดึงยอดเดือนนี้ ────────────────────────────────────────────────────────────
 async function getMonthReport(groupId) {
   try {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7
+    const year = now.getUTCFullYear();
+    const month = String(now.getUTCMonth() + 1).padStart(2, "0");
     const from = `${year}-${month}-01`;
     const to = `${year}-${month}-31`;
     const data = await supabase(
