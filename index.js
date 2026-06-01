@@ -107,7 +107,7 @@ async function handleEvent(event) {
     const text = event.message.text.trim();
 
     if (["ฝากเงิน", "รายงาน", "เปิดฟอร์ม"].includes(text)) {
-      await client.replyMessage({ replyToken, messages: [buildLiffMessage()] });
+      await client.replyMessage({ replyToken, messages: [buildLiffMessage(groupId)] });
 
     } else if (text === "เมนู" || text === "menu") {
       await client.replyMessage({ replyToken, messages: [buildMenuMessage()] });
@@ -528,14 +528,15 @@ async function getHistoryByDate(groupId, dateStr) {
   }
 }
 
-function buildLiffMessage() {
+function buildLiffMessage(groupId) {
+  const liffUrl = "https://liff.line.me/" + process.env.LIFF_ID + "?gid=" + encodeURIComponent(groupId || "");
   return {
     type: "template", altText: "กดเพื่อเปิดฟอร์มฝากเงิน",
     template: {
       type: "buttons",
       title: "รายงานฝากเงินประจำวัน",
       text: "กดปุ่มด้านล่างเพื่อกรอกรายละเอียดและแนบสลิป",
-      actions: [{ type: "uri", label: "เปิดฟอร์มฝากเงิน", uri: "https://liff.line.me/" + process.env.LIFF_ID }]
+      actions: [{ type: "uri", label: "เปิดฟอร์มฝากเงิน", uri: liffUrl }]
     }
   };
 }
