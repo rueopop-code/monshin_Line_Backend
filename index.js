@@ -430,47 +430,23 @@ function buildBtn(label, text) {
 
 // ─── ประวัติ: เลือกเดือน ──────────────────────────────────────────────────────
 function buildHistoryMonthMenu() {
-  const now = new Date();
-  const curMonth = now.getMonth();
-  const months = [];
+  const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000);
+  const curMonth = now.getUTCMonth();
+  const lines = [];
   for (let i = 5; i >= 0; i--) {
-    const idx = (curMonth - i + 12) % 12;
-    months.push({ label: thaiMonths[idx], text: "ประวัติเดือน:" + thaiMonths[idx] });
+    const idx2 = (curMonth - i + 12) % 12;
+    const mark = idx2 === curMonth ? " ●" : "";
+    lines.push("• " + thaiMonths[idx2] + mark + "  →  พิมพ์: ประวัติเดือน:" + thaiMonths[idx2]);
   }
   return {
-    type: "flex", altText: "เลือกเดือนที่ต้องการดูประวัติ",
-    contents: {
-      type: "bubble",
-      header: {
-        type: "box", layout: "vertical", backgroundColor: "#2C3E50", paddingAll: "md",
-        contents: [
-          { type: "text", text: "📂 ดูประวัติรายงาน", color: "#FFFFFF", size: "md", weight: "bold" },
-          { type: "text", text: "เลือกเดือนที่ต้องการ", color: "#BDC3C7", size: "sm" }
-        ]
-      },
-      body: {
-        type: "box", layout: "vertical", spacing: "sm",
-        contents: [
-          {
-            type: "box", layout: "horizontal", spacing: "sm",
-            contents: months.slice(0,3).map(m => ({
-              type: "button", style: "secondary", height: "sm",
-              action: { type: "postback", label: m.label, data: m.text, displayText: m.label }
-            }))
-          },
-          {
-            type: "box", layout: "horizontal", spacing: "sm",
-            contents: months.slice(3,6).map(m => ({
-              type: "button",
-              style: m.label === thaiMonths[curMonth] ? "primary" : "secondary",
-              color: m.label === thaiMonths[curMonth] ? "#2C3E50" : undefined,
-              height: "sm",
-              action: { type: "postback", label: m.label + (m.label === thaiMonths[curMonth] ? " ●" : ""), data: m.text, displayText: m.label }
-            }))
-          }
-        ]
-      }
-    }
+    type: "text",
+    text: "📂 ดูประวัติรายงาน
+พิมพ์ชื่อเดือนที่ต้องการ:
+
+" + lines.join("
+") + "
+
+ตัวอย่าง: ประวัติเดือน:มิ.ย."
   };
 }
 
