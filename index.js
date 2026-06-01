@@ -124,12 +124,12 @@ async function handleEvent(event) {
   const userId = event.source.userId || "";
   const isUser = event.source.type === "user"; // 1:1 กับ OA
 
-  // helper: ส่งข้อความกลับ — ใช้ push สำหรับ 1:1 เพื่อหลีกเลี่ยง replyToken ปัญหา
+  // helper: ส่งข้อความกลับด้วย replyToken เสมอ พร้อม error handling
   const reply = async (messages) => {
-    if (isUser && userId) {
-      await client.pushMessage({ to: userId, messages });
-    } else {
+    try {
       await client.replyMessage({ replyToken, messages });
+    } catch(e) {
+      console.error("reply error:", e.message);
     }
   };
 
@@ -491,6 +491,11 @@ async function buildHistoryDateMenu(groupId, monthName) {
     const rows = [];
     for (let i = 0; i < dateButtons.length; i += 3) {
       rows.push({ type: "box", layout: "horizontal", spacing: "sm", contents: dateButtons.slice(i, i+3) });
+    }
+
+    // ถ้าไม่มีวันที่เลย
+    if (rows.length === 0) {
+      return { type: "text", text: "📂 ไม่มีรายงานเดือน" + monthName + " ครับ" };
     }
 
     return {
