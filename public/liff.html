@@ -600,11 +600,14 @@
     const remaining  = totalCash - deposit;
     const dateText   = thDate(document.getElementById("dep-date").value);
 
-    // ดึง group_id ก่อน
+    // ดึง group_id จาก LIFF context
     let gId = "";
     try {
       const ctx2 = liff.getContext();
-      gId = ctx2.groupId || ctx2.roomId || "";
+      console.log("LIFF context:", JSON.stringify(ctx2));
+      // LINE Group ID อยู่ใน ctx2.groupId (ถ้าเปิดจากกลุ่ม)
+      gId = ctx2.groupId || ctx2.roomId || ctx2.utouId || "";
+      console.log("group_id:", gId);
     } catch(e) {
       console.warn("getContext error:", e);
     }
