@@ -115,7 +115,7 @@ app.post("/webhook", express.json(), async (req, res) => {
 });
 
 async function handleEvent(event) {
-  if (event.type !== "message") return;
+  if (!["message", "postback"].includes(event.type)) return;
   // รับทั้ง group, room, และ user (1:1 กับ OA)
   if (!["group", "room", "user"].includes(event.source.type)) return;
 
@@ -144,6 +144,21 @@ async function handleEvent(event) {
     } catch(e) {
       console.warn("ดึง group_id ล่าสุดไม่ได้:", e.message);
     }
+  }
+
+  // ─── Postback handler ───────────────────────────────────────────────────────
+  if (event.type === "postback") {
+    const data = event.postback.data;
+    if (data.startsWith("ประวัติเดือน:")) {
+      const monthStr = data.replace("ประวัติเดือน:", "").trim();
+      const msg = await buildHistoryDateMenu(resolvedGroupId, monthStr);
+      await reply([msg]);
+    } else if (data.startsWith("ประวัติวันที่:")) {
+      const dateStr = data.replace("ประวัติวันที่:", "").trim();
+      const msgs = await getHistoryByDate(resolvedGroupId, dateStr);
+      await reply(msgs.slice(0, 5));
+    }
+    return;
   }
 
   if (event.message.type === "text") {
@@ -440,7 +455,7 @@ function buildHistoryMonthMenu() {
             type: "box", layout: "horizontal", spacing: "sm",
             contents: months.slice(0,3).map(m => ({
               type: "button", style: "secondary", height: "sm",
-              action: { type: "message", label: m.label, text: m.text }
+              action: { type: "postback", label: m.label, data: m.text, displayText: m.label }
             }))
           },
           {
@@ -450,7 +465,7 @@ function buildHistoryMonthMenu() {
               style: m.label === thaiMonths[curMonth] ? "primary" : "secondary",
               color: m.label === thaiMonths[curMonth] ? "#2C3E50" : undefined,
               height: "sm",
-              action: { type: "message", label: m.label + (m.label === thaiMonths[curMonth] ? " ●" : ""), text: m.text }
+              action: { type: "postback", label: m.label + (m.label === thaiMonths[curMonth] ? " ●" : ""), data: m.text, displayText: m.label }
             }))
           }
         ]
