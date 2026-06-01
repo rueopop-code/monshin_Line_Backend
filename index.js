@@ -149,7 +149,21 @@ async function handleEvent(event) {
   // ─── Postback handler ───────────────────────────────────────────────────────
   if (event.type === "postback") {
     const data = event.postback.data;
-    if (data.startsWith("ประวัติเดือน:")) {
+    if (data === "ยอดวันนี้") {
+      const msg = await getTodayReport(resolvedGroupId);
+      await reply([msg]);
+    } else if (data === "ยอดเดือนนี้") {
+      const msg = await getMonthReport(resolvedGroupId);
+      await reply([msg]);
+    } else if (data === "สรุปยอด") {
+      await reply([buildSummaryMenu()]);
+    } else if (data.startsWith("เดือน:")) {
+      const monthStr = data.replace("เดือน:", "").trim();
+      const msg = await getMonthReportByName(resolvedGroupId, monthStr);
+      await reply([msg]);
+    } else if (data === "ประวัติ") {
+      await reply([buildHistoryMonthMenu()]);
+    } else if (data.startsWith("ประวัติเดือน:")) {
       const monthStr = data.replace("ประวัติเดือน:", "").trim();
       const msg = await buildHistoryDateMenu(resolvedGroupId, monthStr);
       await reply([msg]);
@@ -424,7 +438,7 @@ function buildRow(label, value, color) {
 function buildBtn(label, text) {
   return {
     type: "button", style: "secondary", height: "sm",
-    action: { type: "message", label, text }
+    action: { type: "postback", label, data: text, displayText: label }
   };
 }
 
@@ -639,7 +653,7 @@ function buildSummaryMenu() {
             type: "box", layout: "horizontal", spacing: "sm",
             contents: months.slice(0, 3).map(m => ({
               type: "button", style: "secondary", height: "sm",
-              action: { type: "message", label: m.label, text: m.text }
+              action: { type: "postback", label: m.label, data: m.text, displayText: m.label }
             }))
           },
           {
@@ -649,7 +663,7 @@ function buildSummaryMenu() {
               style: m.label === thaiMonths[curMonth] ? "primary" : "secondary",
               color: m.label === thaiMonths[curMonth] ? "#C0392B" : undefined,
               height: "sm",
-              action: { type: "message", label: m.label + (m.label === thaiMonths[curMonth] ? " ●" : ""), text: m.text }
+              action: { type: "postback", label: m.label + (m.label === thaiMonths[curMonth] ? " ●" : ""), data: m.text, displayText: m.label }
             }))
           }
         ]
