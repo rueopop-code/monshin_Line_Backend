@@ -16,44 +16,26 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-// ─── 1. สร้าง Rich Menu ──────────────────────────────────────────────────────
 async function createRichMenu() {
   console.log("1️⃣  กำลังสร้าง Rich Menu...");
   const body = {
-    size: { width: 2500, height: 843 },
+    size: { width: 2500, height: 1686 },  // ขนาดใหม่
     selected: true,
     name: "มนชิน เมนูหลัก",
     chatBarText: "เมนูด่วน",
     areas: [
-      {
-        bounds: { x: 0, y: 0, width: 1250, height: 421 },
-        action: { type: "message", text: "ยอดวันนี้" },
-      },
-      {
-        bounds: { x: 1250, y: 0, width: 1250, height: 421 },
-        action: { type: "message", text: "ยอดเดือนนี้" },
-      },
-      {
-        bounds: { x: 0, y: 421, width: 1250, height: 422 },
-        action: { type: "message", text: "สรุปยอด" },
-      },
-      {
-        bounds: { x: 1250, y: 421, width: 1250, height: 422 },
-        action: { type: "message", text: "ประวัติ" },
-      },
+      { bounds: { x: 0,    y: 0,   width: 1250, height: 843 }, action: { type: "message", text: "ยอดวันนี้"   } },
+      { bounds: { x: 1250, y: 0,   width: 1250, height: 843 }, action: { type: "message", text: "ยอดเดือนนี้" } },
+      { bounds: { x: 0,    y: 843, width: 1250, height: 843 }, action: { type: "message", text: "สรุปยอด"     } },
+      { bounds: { x: 1250, y: 843, width: 1250, height: 843 }, action: { type: "message", text: "ประวัติ"     } },
     ],
   };
 
-  const res = await axios.post(
-    "https://api.line.me/v2/bot/richmenu",
-    body,
-    { headers }
-  );
+  const res = await axios.post("https://api.line.me/v2/bot/richmenu", body, { headers });
   console.log("   ✅ Rich Menu ID:", res.data.richMenuId);
   return res.data.richMenuId;
 }
 
-// ─── 2. อัปโหลดรูป ───────────────────────────────────────────────────────────
 async function uploadImage(richMenuId) {
   console.log("2️⃣  กำลังอัปโหลดรูป...");
   const imgPath = path.join(__dirname, "richmenu.png");
@@ -61,59 +43,37 @@ async function uploadImage(richMenuId) {
     console.error("❌ ไม่พบไฟล์ richmenu.png");
     process.exit(1);
   }
-
   const form = new FormData();
   form.append("image", fs.createReadStream(imgPath), {
     filename: "richmenu.png",
     contentType: "image/png",
   });
-
   await axios.post(
     `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
     form,
-    {
-      headers: {
-        Authorization: "Bearer " + TOKEN,
-        ...form.getHeaders(),
-      },
-    }
+    { headers: { Authorization: "Bearer " + TOKEN, ...form.getHeaders() } }
   );
   console.log("   ✅ อัปโหลดรูปสำเร็จ");
 }
 
-// ─── 3. ตั้งเป็น Default Rich Menu ──────────────────────────────────────────
 async function setDefault(richMenuId) {
   console.log("3️⃣  กำลังตั้งเป็น Default Rich Menu...");
-  await axios.post(
-    `https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`,
-    {},
-    { headers }
-  );
+  await axios.post(`https://api.line.me/v2/bot/user/all/richmenu/${richMenuId}`, {}, { headers });
   console.log("   ✅ ตั้ง Default สำเร็จ");
 }
 
-// ─── ลบ Rich Menu เก่า ───────────────────────────────────────────────────────
 async function deleteOldMenus() {
   console.log("🗑️  กำลังลบ Rich Menu เก่า...");
   try {
-    const res = await axios.get(
-      "https://api.line.me/v2/bot/richmenu/list",
-      { headers }
-    );
+    const res = await axios.get("https://api.line.me/v2/bot/richmenu/list", { headers });
     const menus = res.data.richmenus || [];
     for (const m of menus) {
-      await axios.delete(
-        `https://api.line.me/v2/bot/richmenu/${m.richMenuId}`,
-        { headers }
-      );
+      await axios.delete(`https://api.line.me/v2/bot/richmenu/${m.richMenuId}`, { headers });
       console.log("   ลบ:", m.richMenuId);
     }
-  } catch (e) {
-    console.log("   (ไม่มี menu เก่า)");
-  }
+  } catch (e) { console.log("   (ไม่มี menu เก่า)"); }
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
 async function main() {
   console.log("\n🚀 เริ่มติดตั้ง Rich Menu มนชิน ซัพพลาย\n");
   try {
