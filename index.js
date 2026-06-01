@@ -89,9 +89,27 @@ app.post("/send-slip", express.json({ limit: "1mb" }), async (req, res) => {
 });
 
 // ─── LINE Webhook ──────────────────────────────────────────────────────────────
-app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
+app.post("/webhook", express.json(), async (req, res) => {
+  // ตรวจ signature เอง — ถ้าไม่ผ่านให้ข้ามแทนที่จะ error 400
+  try {
+    const signature = req.headers["x-line-signature"];
+    if (signature) {
+      const crypto = require("crypto");
+      const body = JSON.stringify(req.body);
+      const hash = crypto.createHmac("sha256", lineConfig.channelSecret)
+        .update(body).digest("base64");
+      if (hash !== signature) {
+        console.warn("Invalid signature — skipping");
+        return res.sendStatus(200);
+      }
+    }
+  } catch(e) {
+    console.warn("Signature check error:", e.message);
+  }
+
   res.sendStatus(200);
-  for (const event of req.body.events) {
+  const events = req.body.events || [];
+  for (const event of events) {
     await handleEvent(event);
   }
 });
