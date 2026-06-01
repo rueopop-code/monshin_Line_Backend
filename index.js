@@ -455,15 +455,43 @@ function buildBtn(label, text) {
 function buildHistoryMonthMenu() {
   const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000);
   const curMonth = now.getUTCMonth();
-  const lines = [];
+  const months = [];
   for (let i = 5; i >= 0; i--) {
     const idx2 = (curMonth - i + 12) % 12;
-    const mark = idx2 === curMonth ? " ●" : "";
-    lines.push("• " + thaiMonths[idx2] + mark + "  →  พิมพ์: ประวัติเดือน:" + thaiMonths[idx2]);
+    months.push({ label: thaiMonths[idx2], isCurrent: idx2 === curMonth });
   }
   return {
-    type: "text",
-    text: "📂 ดูประวัติรายงาน\nพิมพ์ชื่อเดือนที่ต้องการ:\n\n" + lines.join("\n") + "\n\nตัวอย่าง: ประวัติเดือน:มิ.ย."
+    type: "flex", altText: "เลือกเดือนดูประวัติ",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical", backgroundColor: "#2C3E50", paddingAll: "md",
+        contents: [{ type: "text", text: "📂 ดูประวัติรายงาน", color: "#FFFFFF", size: "md", weight: "bold" },
+                   { type: "text", text: "เลือกเดือนที่ต้องการ", color: "#BDC3C7", size: "sm" }]
+      },
+      body: {
+        type: "box", layout: "vertical", spacing: "sm",
+        contents: [
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: months.slice(0, 3).map(m => ({
+              type: "button", style: "secondary", height: "sm",
+              action: { type: "postback", label: m.label, data: "ประวัติเดือน:" + m.label, displayText: m.label }
+            }))
+          },
+          {
+            type: "box", layout: "horizontal", spacing: "sm",
+            contents: months.slice(3, 6).map(m => ({
+              type: "button",
+              style: m.isCurrent ? "primary" : "secondary",
+              color: m.isCurrent ? "#2C3E50" : undefined,
+              height: "sm",
+              action: { type: "postback", label: m.label + (m.isCurrent ? " ●" : ""), data: "ประวัติเดือน:" + m.label, displayText: m.label }
+            }))
+          }
+        ]
+      }
+    }
   };
 }
 
