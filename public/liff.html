@@ -686,7 +686,7 @@
         showToast("✅ ส่งรายงานเข้ากลุ่มแล้ว!");
       }
 
-      // 4. บันทึกข้อมูลลง Supabase ด้วย keepalive (ส่งได้แม้หน้าต่างปิด)
+      // 4. บันทึกข้อมูลลง Supabase — รอให้เสร็จก่อนปิดหน้าต่าง
       const savePayload = JSON.stringify({
         report_date:    document.getElementById("dep-date").value,
         cash_in:        cashIn,
@@ -703,12 +703,15 @@
         slip_url:       window._slipUrl || "",
         group_id:       gId
       });
-      fetch("https://monshin-line-backend.onrender.com/save-report", {
-        method: "POST",
-        keepalive: true,
-        headers: { "Content-Type": "application/json" },
-        body: savePayload
-      }).catch(e => console.error("save error:", e));
+      try {
+        await fetch("https://monshin-line-backend.onrender.com/save-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: savePayload
+        });
+      } catch(e) {
+        console.error("save error:", e);
+      }
 
       liff.closeWindow();
 
