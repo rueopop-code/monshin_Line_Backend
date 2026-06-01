@@ -98,26 +98,40 @@ app.post("/webhook", line.middleware(lineConfig), async (req, res) => {
 
 async function handleEvent(event) {
   if (event.type !== "message") return;
-  if (!["group", "room"].includes(event.source.type)) return;
+  // รับทั้ง group, room, และ user (1:1 กับ OA)
+  if (!["group", "room", "user"].includes(event.source.type)) return;
 
   const replyToken = event.replyToken;
-  const groupId = event.source.groupId || event.source.roomId;
+  const groupId = event.source.groupId || event.source.roomId || "";
+
+  // ถ้าเป็น 1:1 และไม่มี groupId ให้ดึง groupId ล่าสุดจาก Supabase
+  let resolvedGroupId = groupId;
+  if (!groupId && event.source.type === "user") {
+    try {
+      const latest = await supabase("/reports?order=created_at.desc&limit=1");
+      if (latest && latest.length > 0 && latest[0].group_id) {
+        resolvedGroupId = latest[0].group_id;
+      }
+    } catch(e) {
+      console.warn("ดึง group_id ล่าสุดไม่ได้:", e.message);
+    }
+  }
 
   if (event.message.type === "text") {
     const text = event.message.text.trim();
 
     if (["ฝากเงิน", "รายงาน", "เปิดฟอร์ม"].includes(text)) {
-      await client.replyMessage({ replyToken, messages: [buildLiffMessage(groupId)] });
+      await client.replyMessage({ replyToken, messages: [buildLiffMessage(resolvedGroupId)] });
 
     } else if (text === "เมนู" || text === "menu") {
       await client.replyMessage({ replyToken, messages: [buildMenuMessage()] });
 
     } else if (text === "ยอดวันนี้") {
-      const msg = await getTodayReport(groupId);
+      const msg = await getTodayReport(resolvedGroupId);
       await client.replyMessage({ replyToken, messages: [msg] });
 
     } else if (text === "ยอดเดือนนี้") {
-      const msg = await getMonthReport(groupId);
+      const msg = await getMonthReport(resolvedGroupId);
       await client.replyMessage({ replyToken, messages: [msg] });
 
     } else if (text === "สรุปยอด") {
@@ -125,7 +139,7 @@ async function handleEvent(event) {
 
     } else if (text.startsWith("เดือน:")) {
       const monthStr = text.replace("เดือน:", "").trim();
-      const msg = await getMonthReportByName(groupId, monthStr);
+      const msg = await getMonthReportByName(resolvedGroupId, monthStr);
       await client.replyMessage({ replyToken, messages: [msg] });
 
     } else if (text === "ประวัติ") {
@@ -133,12 +147,12 @@ async function handleEvent(event) {
 
     } else if (text.startsWith("ประวัติเดือน:")) {
       const monthStr = text.replace("ประวัติเดือน:", "").trim();
-      const msg = await buildHistoryDateMenu(groupId, monthStr);
+      const msg = await buildHistoryDateMenu(resolvedGroupId, monthStr);
       await client.replyMessage({ replyToken, messages: [msg] });
 
     } else if (text.startsWith("ประวัติวันที่:")) {
       const dateStr = text.replace("ประวัติวันที่:", "").trim();
-      const msgs = await getHistoryByDate(groupId, dateStr);
+      const msgs = await getHistoryByDate(resolvedGroupId, dateStr);
       await client.replyMessage({ replyToken, messages: msgs.slice(0, 5) });
     }
   }
