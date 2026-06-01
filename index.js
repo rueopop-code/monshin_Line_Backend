@@ -5,6 +5,9 @@ const path = require("path");
 
 const app = express();
 
+// ─── Serve static files จาก public/ ──────────────────────────────────────────
+app.use(express.static(path.join(__dirname, "public")));
+
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
