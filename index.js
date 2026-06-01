@@ -27,13 +27,16 @@ async function supabase(path, method = "GET", body = null) {
     "Prefer": method === "POST" ? "return=minimal" : ""
   };
   const url = SUPABASE_URL + "/rest/v1" + path;
+  console.log("[supabase]", method, url);
   try {
     const res = await axios({ method, url, headers, data: body || undefined });
     if (res.status === 204 || res.status === 201) return null;
     return res.data;
   } catch(err) {
     if (err.response && (err.response.status === 204 || err.response.status === 201)) return null;
-    throw err;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error("[supabase error]", method, url, "→", detail);
+    throw new Error(detail);
   }
 }
 
@@ -228,7 +231,7 @@ async function getTodayReport(groupId) {
   try {
     const today = getTodayTH();
     const data = await supabase(
-      `/reports?report_date=eq.${today}&group_id=eq.${groupId}&order=created_at.asc`
+      `/reports?report_date=eq.${today}&group_id=eq.${encodeURIComponent(groupId)}&order=created_at.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📊 ยังไม่มีรายงานวันนี้ครับ\nพิมพ์ \"ฝากเงิน\" เพื่อเปิดฟอร์ม" };
@@ -300,18 +303,21 @@ function buildTodayMultiFlex(rows, dateStr) {
 // ─── ดึงยอดเดือนนี้ ────────────────────────────────────────────────────────────
 async function getMonthReport(groupId) {
   try {
+    if (!groupId) return { type: "text", text: "❌ ไม่พบ group_id กรุณาใช้ในกลุ่ม LINE ครับ" };
     const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7
     const year = now.getUTCFullYear();
-    const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const monthNum = now.getUTCMonth() + 1;
+    const month = String(monthNum).padStart(2, "0");
+    const lastDay = new Date(year, monthNum, 0).getDate();
     const from = `${year}-${month}-01`;
-    const to = `${year}-${month}-31`;
+    const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
     const data = await supabase(
-      `/reports?report_date=gte.${from}&report_date=lte.${to}&group_id=eq.${groupId}`
+      `/reports?report_date=gte.${from}&report_date=lte.${to}&group_id=eq.${encodeURIComponent(groupId)}&order=report_date.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📅 ยังไม่มีรายงานเดือนนี้ครับ" };
     }
-    return buildMonthFlex(data, thaiMonths[now.getMonth()] + " " + (year + 543));
+    return buildMonthFlex(data, thaiMonths[now.getUTCMonth()] + " " + (year + 543));
   } catch (err) {
     return { type: "text", text: "❌ ดึงข้อมูลไม่ได้ครับ: " + err.message };
   }
@@ -320,15 +326,18 @@ async function getMonthReport(groupId) {
 // ─── ดึงยอดตามเดือนที่เลือก ────────────────────────────────────────────────────
 async function getMonthReportByName(groupId, monthName) {
   try {
-    const now = new Date();
-    const year = now.getFullYear();
+    if (!groupId) return { type: "text", text: "❌ ไม่พบ group_id กรุณาใช้ในกลุ่ม LINE ครับ" };
+    const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7
+    const year = now.getUTCFullYear();
     const monthIdx = thaiMonths.indexOf(monthName);
     if (monthIdx === -1) return { type: "text", text: "❌ ไม่พบเดือน: " + monthName };
-    const month = String(monthIdx + 1).padStart(2, "0");
+    const monthNum = monthIdx + 1;
+    const month = String(monthNum).padStart(2, "0");
+    const lastDay = new Date(year, monthNum, 0).getDate();
     const from = `${year}-${month}-01`;
-    const to = `${year}-${month}-31`;
+    const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
     const data = await supabase(
-      `/reports?report_date=gte.${from}&report_date=lte.${to}&group_id=eq.${groupId}`
+      `/reports?report_date=gte.${from}&report_date=lte.${to}&group_id=eq.${encodeURIComponent(groupId)}&order=report_date.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: `📅 ไม่มีรายงานเดือน${monthName} ครับ` };
@@ -466,10 +475,12 @@ async function buildHistoryDateMenu(groupId, monthName) {
     const monthIdx = thaiMonths.indexOf(monthName);
     if (monthIdx === -1) return { type: "text", text: "❌ ไม่พบเดือน: " + monthName };
     const month = String(monthIdx + 1).padStart(2, "0");
+    const lastDay = new Date(year, monthIdx + 1, 0).getDate();
     const from = year + "-" + month + "-01";
-    const to = year + "-" + month + "-31";
+    const to = year + "-" + month + "-" + String(lastDay).padStart(2, "0");
+    if (!groupId) return { type: "text", text: "❌ ไม่พบ group_id กรุณาใช้ในกลุ่ม LINE ครับ" };
     const data = await supabase(
-      "/reports?report_date=gte." + from + "&report_date=lte." + to + "&group_id=eq." + groupId + "&order=report_date.asc"
+      "/reports?report_date=gte." + from + "&report_date=lte." + to + "&group_id=eq." + encodeURIComponent(groupId) + "&order=report_date.asc"
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📂 ไม่มีรายงานเดือน" + monthName + " ครับ" };
@@ -520,7 +531,7 @@ async function buildHistoryDateMenu(groupId, monthName) {
 async function getHistoryByDate(groupId, dateStr) {
   try {
     const data = await supabase(
-      "/reports?report_date=eq." + dateStr + "&group_id=eq." + groupId + "&order=created_at.asc"
+      "/reports?report_date=eq." + dateStr + "&group_id=eq." + encodeURIComponent(groupId) + "&order=created_at.asc"
     );
     if (!data || data.length === 0) {
       return [{ type: "text", text: "📂 ไม่มีรายงานวันที่ " + formatThaiDate(dateStr) + " ครับ" }];
