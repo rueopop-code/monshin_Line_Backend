@@ -616,6 +616,8 @@
       console.warn("getContext error:", e);
     }
 
+    const depositorName = document.getElementById("depositor-name").value || "";
+    const noteText      = document.getElementById("note").value || "";
     const slipLine = slipBase64 ? `🖼️ สลิปแนบด้านล่าง` : `📎 ไม่มีสลิป`;
     const msg = {
       type: "text",
@@ -623,6 +625,7 @@
         `🏪 มนชิน ซัพพลาย\n` +
         `📋 รายงานฝากเงินประจำวัน\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
+        (depositorName ? `👤 ผู้ฝาก : ${depositorName}\n` : ``) +
         `📅 วันที่ : ${dateText}\n` +
         `💵 ยอดเงินเข้ากะ : ${fmt(cashIn)} บาท\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -635,6 +638,7 @@
         `🏦 ฝากธนาคาร : ${fmt(deposit)} บาท\n` +
         `🪙 เงินคืนเข้ากะ : ${fmt(remaining)} บาท\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
+        (noteText ? `📝 หมายเหตุ : ${noteText}\n` : ``) +
         slipLine,
     };
 
