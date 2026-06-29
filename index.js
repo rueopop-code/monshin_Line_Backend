@@ -14,7 +14,7 @@ const lineConfig = {
 };
 const client = new line.messagingApi.MessagingApiClient(lineConfig);
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://mnilcsbyhtmauvuadrjs.supabase.co";
+const SUPABASE_URL = process.env.SUPABASE_URL || "https://mnilhcsbyhtmauvuadrjs.supabase.co";
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 // ─── Supabase Helper ───────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ async function getTodayReport(groupId) {
   try {
     const today = getTodayTH();
     const data = await supabase(
-      `/reports?report_date=eq.${today}&group_id=eq.${encodeURIComponent(groupId)}&order=created_at.asc`
+      `/reports?report_date=eq.${today}${groupId ? "&group_id=eq." + encodeURIComponent(groupId) : ""}&order=created_at.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📊 ยังไม่มีรายงานวันนี้ครับ\nพิมพ์ \"ฝากเงิน\" เพื่อเปิดฟอร์ม" };
@@ -303,7 +303,7 @@ function buildTodayMultiFlex(rows, dateStr) {
 // ─── ดึงยอดเดือนนี้ ────────────────────────────────────────────────────────────
 async function getMonthReport(groupId) {
   try {
-    if (!groupId) return { type: "text", text: "❌ ไม่พบ group_id กรุณาใช้ในกลุ่ม LINE ครับ" };
+    
     const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7
     const year = now.getUTCFullYear();
     const monthNum = now.getUTCMonth() + 1;
@@ -312,7 +312,7 @@ async function getMonthReport(groupId) {
     const from = `${year}-${month}-01`;
     const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
     const data = await supabase(
-      `/reports?report_date=gte.${from}&report_date=lte.${to}&group_id=eq.${encodeURIComponent(groupId)}&order=report_date.asc`
+      `/reports?report_date=gte.${from}&report_date=lte.${to}${groupId ? "&group_id=eq." + encodeURIComponent(groupId) : ""}&order=report_date.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📅 ยังไม่มีรายงานเดือนนี้ครับ" };
@@ -326,7 +326,7 @@ async function getMonthReport(groupId) {
 // ─── ดึงยอดตามเดือนที่เลือก ────────────────────────────────────────────────────
 async function getMonthReportByName(groupId, monthName) {
   try {
-    if (!groupId) return { type: "text", text: "❌ ไม่พบ group_id กรุณาใช้ในกลุ่ม LINE ครับ" };
+    
     const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7
     const year = now.getUTCFullYear();
     const monthIdx = thaiMonths.indexOf(monthName);
@@ -337,7 +337,7 @@ async function getMonthReportByName(groupId, monthName) {
     const from = `${year}-${month}-01`;
     const to = `${year}-${month}-${String(lastDay).padStart(2, "0")}`;
     const data = await supabase(
-      `/reports?report_date=gte.${from}&report_date=lte.${to}&group_id=eq.${encodeURIComponent(groupId)}&order=report_date.asc`
+      `/reports?report_date=gte.${from}&report_date=lte.${to}${groupId ? "&group_id=eq." + encodeURIComponent(groupId) : ""}&order=report_date.asc`
     );
     if (!data || data.length === 0) {
       return { type: "text", text: `📅 ไม่มีรายงานเดือน${monthName} ครับ` };
@@ -506,9 +506,9 @@ async function buildHistoryDateMenu(groupId, monthName) {
     const lastDay = new Date(year, monthIdx + 1, 0).getDate();
     const from = year + "-" + month + "-01";
     const to = year + "-" + month + "-" + String(lastDay).padStart(2, "0");
-    if (!groupId) return { type: "text", text: "❌ ไม่พบ group_id กรุณาใช้ในกลุ่ม LINE ครับ" };
+    
     const data = await supabase(
-      "/reports?report_date=gte." + from + "&report_date=lte." + to + "&group_id=eq." + encodeURIComponent(groupId) + "&order=report_date.asc"
+      "/reports?report_date=gte." + from + "&report_date=lte." + to + (groupId ? "&group_id=eq." + encodeURIComponent(groupId) : "") + "&order=report_date.asc"
     );
     if (!data || data.length === 0) {
       return { type: "text", text: "📂 ไม่มีรายงานเดือน" + monthName + " ครับ" };
@@ -559,7 +559,7 @@ async function buildHistoryDateMenu(groupId, monthName) {
 async function getHistoryByDate(groupId, dateStr) {
   try {
     const data = await supabase(
-      "/reports?report_date=eq." + dateStr + "&group_id=eq." + encodeURIComponent(groupId) + "&order=created_at.asc"
+      "/reports?report_date=eq." + dateStr + (groupId ? "&group_id=eq." + encodeURIComponent(groupId) : "") + "&order=created_at.asc"
     );
     if (!data || data.length === 0) {
       return [{ type: "text", text: "📂 ไม่มีรายงานวันที่ " + formatThaiDate(dateStr) + " ครับ" }];
@@ -712,6 +712,16 @@ function buildSummaryMenu() {
 }
 
 app.get("/", (req, res) => res.json({ status: "ok" }));
+
+// ─── Keep Supabase alive ───────────────────────────────────────────────────────
+app.get("/ping-db", async (req, res) => {
+  try {
+    await supabase("/reports?limit=1");
+    res.json({ ok: true });
+  } catch(e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on port " + PORT));
