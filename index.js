@@ -47,10 +47,12 @@ app.post("/save-report", express.json({ limit: "1mb" }), async (req, res) => {
 
     // ป้องกัน field ที่ไม่ตรง — map เฉพาะ column ที่มีใน table
     const data = {
-      report_date:    raw.report_date    || new Date().toISOString().split("T")[0],
+      report_date:    raw.report_date    || getTodayTH(),
       cash_in:        Number(raw.cash_in        || 0),
       total_sales:    Number(raw.total_sales    || 0),
       transfer:       Number(raw.transfer       || 0),
+      cash_added:     Number(raw.cash_added     || 0),
+      cash_withdrawn: Number(raw.cash_withdrawn || 0),
       cash_sales:     Number(raw.cash_sales     || 0),
       total_cash:     Number(raw.total_cash     || 0),
       deposit:        Number(raw.deposit        || 0),
@@ -264,6 +266,8 @@ function buildTodayMultiFlex(rows, dateStr) {
         ]
       },
       buildRow("💵 เข้ากะ", fmt(r.cash_in) + " บาท"),
+      ...(Number(r.cash_added) > 0 ? [buildRow("📥 นำเงินเข้า", fmt(r.cash_added) + " บาท", "#27AE60")] : []),
+      ...(Number(r.cash_withdrawn) > 0 ? [buildRow("📤 นำเงินออก", fmt(r.cash_withdrawn) + " บาท", "#E74C3C")] : []),
       buildRow("🏦 ฝาก", fmt(r.deposit) + " บาท"),
       buildRow("🪙 คืนกะ", fmt(r.remaining) + " บาท", Number(r.remaining) >= 0 ? "#27AE60" : "#E74C3C")
     ]
@@ -380,11 +384,15 @@ function buildReportFlex(title, dateStr, r) {
           buildRow("💵 ยอดเข้ากะ", fmt(r.cash_in) + " บาท"),
           buildRow("🛒 ยอดขาย", fmt(r.total_sales) + " บาท"),
           buildRow("📲 ยอดโอน", fmt(r.transfer) + " บาท"),
+          ...(Number(r.cash_added) > 0 ? [buildRow("📥 นำเงินเข้า", fmt(r.cash_added) + " บาท", "#27AE60")] : []),
+          ...(Number(r.cash_withdrawn) > 0 ? [buildRow("📤 นำเงินออก", fmt(r.cash_withdrawn) + " บาท", "#E74C3C")] : []),
           buildRow("💰 ยอดเงินสด", fmt(r.cash_sales) + " บาท"),
+          ...(r.diff_amount > 0 ? [buildRow(r.diff_type === "plus" ? "✅ ผลบวก" : "❌ ผลลบ", fmt(r.diff_amount) + " บาท")] : []),
           { type: "separator" },
           buildRow("🏧 เงินสดทั้งหมด", fmt(r.total_cash) + " บาท"),
           buildRow("🏦 ฝากธนาคาร", fmt(r.deposit) + " บาท"),
-          buildRow("🪙 เงินคืนกะ", fmt(r.remaining) + " บาท", "#27AE60")
+          buildRow("🪙 เงินคืนกะ", fmt(r.remaining) + " บาท", "#27AE60"),
+          ...(r.note ? [{ type: "separator" }, buildNoteRow("📝 หมายเหตุ", r.note)] : [])
         ]
       },
       footer: {
@@ -403,6 +411,8 @@ function buildMonthFlex(rows, monthLabel) {
   const total_transfer = rows.reduce((s, r) => s + Number(r.transfer || 0), 0);
   const total_deposit = rows.reduce((s, r) => s + Number(r.deposit || 0), 0);
   const total_cash = rows.reduce((s, r) => s + Number(r.cash_sales || 0), 0);
+  const total_cash_added = rows.reduce((s, r) => s + Number(r.cash_added || 0), 0);
+  const total_cash_withdrawn = rows.reduce((s, r) => s + Number(r.cash_withdrawn || 0), 0);
   return {
     type: "flex", altText: "สรุปยอดเดือน " + monthLabel,
     contents: {
@@ -420,6 +430,8 @@ function buildMonthFlex(rows, monthLabel) {
         contents: [
           buildRow("🛒 ยอดขายรวม", fmt(total_sales) + " บาท"),
           buildRow("📲 ยอดโอนรวม", fmt(total_transfer) + " บาท"),
+          ...(total_cash_added > 0 ? [buildRow("📥 นำเงินเข้ารวม", fmt(total_cash_added) + " บาท", "#27AE60")] : []),
+          ...(total_cash_withdrawn > 0 ? [buildRow("📤 นำเงินออกรวม", fmt(total_cash_withdrawn) + " บาท", "#E74C3C")] : []),
           buildRow("💰 ยอดเงินสดรวม", fmt(total_cash) + " บาท"),
           { type: "separator" },
           buildRow("🏦 ฝากธนาคารรวม", fmt(total_deposit) + " บาท", "#27AE60"),
@@ -439,7 +451,18 @@ function buildRow(label, value, color) {
     type: "box", layout: "horizontal",
     contents: [
       { type: "text", text: label, size: "sm", color: "#555555", flex: 3 },
-      { type: "text", text: value, size: "sm", weight: "bold", color: color || "#1A1A1A", flex: 2, align: "end" }
+      { type: "text", text: value, size: "sm", weight: "bold", color: color || "#1A1A1A", flex: 2, align: "end", wrap: true }
+    ]
+  };
+}
+
+// แถวหมายเหตุ — วางแนวตั้งเต็มความกว้าง + wrap เพื่อไม่ให้ข้อความยาวถูกตัด (...)
+function buildNoteRow(label, value, color) {
+  return {
+    type: "box", layout: "vertical", spacing: "xs",
+    contents: [
+      { type: "text", text: label, size: "sm", color: "#555555" },
+      { type: "text", text: value, size: "sm", weight: "bold", color: color || "#1A1A1A", wrap: true }
     ]
   };
 }
@@ -498,8 +521,8 @@ function buildHistoryMonthMenu() {
 // ─── ประวัติ: เลือกวันที่ ──────────────────────────────────────────────────────
 async function buildHistoryDateMenu(groupId, monthName) {
   try {
-    const now = new Date();
-    const year = now.getFullYear();
+    const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7 — ให้ตรงกับฟังก์ชันวันที่อื่นๆ
+    const year = now.getUTCFullYear();
     const monthIdx = thaiMonths.indexOf(monthName);
     if (monthIdx === -1) return { type: "text", text: "❌ ไม่พบเดือน: " + monthName };
     const month = String(monthIdx + 1).padStart(2, "0");
@@ -594,10 +617,12 @@ async function getHistoryByDate(groupId, dateStr) {
               buildRow("💵 ยอดเข้ากะ", fmt(r.cash_in) + " บาท"),
               buildRow("🛒 ยอดขาย", fmt(r.total_sales) + " บาท"),
               buildRow("📲 ยอดโอน", fmt(r.transfer) + " บาท"),
+              ...(Number(r.cash_added) > 0 ? [buildRow("📥 นำเงินเข้า", fmt(r.cash_added) + " บาท", "#27AE60")] : []),
+              ...(Number(r.cash_withdrawn) > 0 ? [buildRow("📤 นำเงินออก", fmt(r.cash_withdrawn) + " บาท", "#E74C3C")] : []),
               buildRow("🏦 ฝากธนาคาร", fmt(r.deposit) + " บาท"),
               buildRow("🪙 เงินคืนกะ", fmt(r.remaining) + " บาท", Number(r.remaining) >= 0 ? "#27AE60" : "#E74C3C"),
-              ...(r.note ? [buildRow("📝 หมายเหตุ", r.note)] : []),
               ...(r.diff_amount > 0 ? [buildRow(r.diff_type === "plus" ? "✅ ผลบวก" : "❌ ผลลบ", fmt(r.diff_amount) + " บาท")] : []),
+              ...(r.note ? [{ type: "separator", margin: "sm" }, buildNoteRow("📝 หมายเหตุ", r.note)] : []),
               ...(r.slip_url ? [{
                 type: "button", style: "primary", color: "#27AE60",
                 action: { type: "uri", label: "🖼️ ดูสลิป", uri: r.slip_url }
@@ -669,9 +694,9 @@ function buildMenuMessage() {
 }
 
 function buildSummaryMenu() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const curMonth = now.getMonth();
+  const now = new Date(new Date().getTime() + 7 * 60 * 60 * 1000); // UTC+7 — ให้ตรงกับฟังก์ชันวันที่อื่นๆ
+  const year = now.getUTCFullYear();
+  const curMonth = now.getUTCMonth();
   const months = [];
   for (let i = 5; i >= 0; i--) {
     const idx = (curMonth - i + 12) % 12;
