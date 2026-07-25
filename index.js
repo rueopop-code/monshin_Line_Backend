@@ -40,9 +40,42 @@ async function supabase(path, method = "GET", body = null) {
   }
 }
 
+// ─── ตรวจสอบ LIFF ID Token (ป้องกันคนยิง /save-report, /send-slip ตรงๆ โดยไม่ผ่านฟอร์ม) ─────
+// เปิดใช้งานได้โดยตั้ง LINE_CHANNEL_ID และ REQUIRE_LIFF_AUTH=true ใน .env
+// ถ้าไม่ตั้งค่า ระบบจะทำงานเหมือนเดิมทุกประการ (ไม่ทำลาย integration เดิม เช่น admin panel ที่อาจเรียก /send-slip อยู่)
+const LINE_CHANNEL_ID = process.env.LINE_CHANNEL_ID || "";
+const REQUIRE_LIFF_AUTH = process.env.REQUIRE_LIFF_AUTH === "true";
+
+async function verifyLiffIdToken(req) {
+  if (!REQUIRE_LIFF_AUTH || !LINE_CHANNEL_ID) return true; // ยังไม่เปิดใช้งาน -> ผ่านเสมอ
+  try {
+    const auth = req.headers["authorization"] || "";
+    const idToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    if (!idToken) return false;
+    const axios = require("axios");
+    const params = new URLSearchParams({ id_token: idToken, client_id: LINE_CHANNEL_ID });
+    const res = await axios.post("https://api.line.me/oauth2/v2.1/verify", params);
+    return !!(res.data && res.data.sub);
+  } catch (e) {
+    console.warn("LIFF token verify failed:", e.response?.data || e.message);
+    return false;
+  }
+}
+
+// ─── ข้อความ error ที่ปลอดภัยสำหรับแสดงในแชท LINE ───────────────────────────────
+// แก้บั๊ก: เดิมเอา err.message (รายละเอียดภายในจาก Supabase เช่นชื่อ column/schema) ไปแปะในแชทตรงๆ
+function friendlyError(context, err) {
+  console.error(`[${context}]`, err.message);
+  return "❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้งครับ";
+}
+
 // ─── บันทึกรายงานลง Supabase ──────────────────────────────────────────────────
 app.post("/save-report", express.json({ limit: "1mb" }), async (req, res) => {
   try {
+    if (!(await verifyLiffIdToken(req))) {
+      return res.status(401).json({ success: false, error: "unauthorized" });
+    }
+
     const raw = req.body;
 
     // ป้องกัน field ที่ไม่ตรง — map เฉพาะ column ที่มีใน table
@@ -58,8 +91,9 @@ app.post("/save-report", express.json({ limit: "1mb" }), async (req, res) => {
       deposit:        Number(raw.deposit        || 0),
       remaining:      Number(raw.remaining      || 0),
       depositor_name: raw.depositor_name || "",
-      diff_amount:    Number(raw.diff_amount    || 0),
-      diff_type:      raw.diff_type      || "plus",
+      // แก้บั๊ก: เดิมรับค่าติดลบเข้ามาตรงๆ ทำให้ "ผลบวก" ที่กรอกติดลบไปหักยอดจริงแบบเงียบๆ
+      diff_amount:    Math.abs(Number(raw.diff_amount || 0)),
+      diff_type:      raw.diff_type === "minus" ? "minus" : "plus",
       note:           raw.note           || "",
       slip_url:       raw.slip_url       || "",
       group_id:       raw.group_id       || "",
@@ -70,16 +104,19 @@ app.post("/save-report", express.json({ limit: "1mb" }), async (req, res) => {
     console.log("save-report: success");
     res.json({ success: true });
   } catch (err) {
-    // พิมพ์ทั้ง response body จาก Supabase เพื่อ debug
+    // พิมพ์ทั้ง response body จาก Supabase เพื่อ debug (server-side เท่านั้น)
     const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
     console.error("save-report error:", detail);
-    res.status(500).json({ success: false, error: detail });
+    res.status(500).json({ success: false, error: "save failed" });
   }
 });
 
 // ─── รับ URL รูปจาก Cloudinary แล้ว push เข้ากลุ่ม LINE ──────────────────────
 app.post("/send-slip", express.json({ limit: "1mb" }), async (req, res) => {
   try {
+    if (!(await verifyLiffIdToken(req))) {
+      return res.status(401).json({ success: false, error: "unauthorized" });
+    }
     const { imageUrl, groupId } = req.body;
     if (!imageUrl || !groupId) return res.status(400).json({ success: false });
     await client.pushMessage({
@@ -89,40 +126,53 @@ app.post("/send-slip", express.json({ limit: "1mb" }), async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     console.error("send-slip error:", err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: "send failed" });
   }
 });
 
 // ─── LINE Webhook ──────────────────────────────────────────────────────────────
-app.post("/webhook", express.json(), async (req, res) => {
-  // ตรวจ signature เอง — ถ้าไม่ผ่านให้ข้ามแทนที่จะ error 400
+app.post("/webhook", express.json({
+  verify: (req, res, buf) => { req.rawBody = buf; } // เก็บ raw body ไว้เช็ค signature ให้ตรงกับที่ LINE เซ็นมาจริงๆ
+}), async (req, res) => {
+  // ตรวจ signature เสมอ — ถ้าไม่มี/ไม่ตรง ให้ปฏิเสธ (401) แทนที่จะปล่อยผ่านแบบเดิม
   try {
+    const crypto = require("crypto");
     const signature = req.headers["x-line-signature"];
-    if (signature) {
-      const crypto = require("crypto");
-      const body = JSON.stringify(req.body);
-      const hash = crypto.createHmac("sha256", lineConfig.channelSecret)
-        .update(body).digest("base64");
-      if (hash !== signature) {
-        console.warn("Invalid signature — skipping");
-        return res.sendStatus(200);
-      }
+    if (!signature) {
+      console.warn("Webhook: missing x-line-signature — ปฏิเสธ");
+      return res.sendStatus(401);
+    }
+    const hash = crypto.createHmac("sha256", lineConfig.channelSecret)
+      .update(req.rawBody || Buffer.from(JSON.stringify(req.body)))
+      .digest("base64");
+    const hashBuf = Buffer.from(hash);
+    const sigBuf = Buffer.from(signature);
+    const isValid = hashBuf.length === sigBuf.length && crypto.timingSafeEqual(hashBuf, sigBuf);
+    if (!isValid) {
+      console.warn("Webhook: invalid signature — ปฏิเสธ");
+      return res.sendStatus(401);
     }
   } catch(e) {
-    console.warn("Signature check error:", e.message);
+    console.error("Signature check error:", e.message);
+    return res.sendStatus(401);
   }
 
   res.sendStatus(200);
   const events = req.body.events || [];
   for (const event of events) {
-    await handleEvent(event);
+    // แก้บั๊ก: เดิมไม่มี try/catch ครอบ ถ้า event ใด event หนึ่งพัง จะทำให้ process ทั้งตัว crash
+    try {
+      await handleEvent(event);
+    } catch (e) {
+      console.error("handleEvent error:", e);
+    }
   }
 });
 
 async function handleEvent(event) {
-  if (!["message", "postback"].includes(event.type)) return;
-  // รับทั้ง group, room, และ user (1:1 กับ OA)
-  if (!["group", "room", "user"].includes(event.source.type)) return;
+  if (!event || !["message", "postback"].includes(event.type)) return;
+  // รับทั้ง group, room, และ user (1:1 กับ OA) — เช็ค event.source ก่อนเพื่อกัน crash
+  if (!event.source || !["group", "room", "user"].includes(event.source.type)) return;
 
   const replyToken = event.replyToken;
   const groupId = event.source.groupId || event.source.roomId || "";
@@ -244,7 +294,7 @@ async function getTodayReport(groupId) {
     // หลายกะ — แสดงสรุปรวม + แต่ละกะ
     return buildTodayMultiFlex(data, formatThaiDate(today));
   } catch (err) {
-    return { type: "text", text: "❌ ดึงข้อมูลไม่ได้ครับ: " + err.message };
+    return { type: "text", text: friendlyError("getTodayReport", err) };
   }
 }
 
@@ -269,7 +319,9 @@ function buildTodayMultiFlex(rows, dateStr) {
       ...(Number(r.cash_added) > 0 ? [buildRow("📥 นำเงินเข้า", fmt(r.cash_added) + " บาท", "#27AE60")] : []),
       ...(Number(r.cash_withdrawn) > 0 ? [buildRow("📤 นำเงินออก", fmt(r.cash_withdrawn) + " บาท", "#E74C3C")] : []),
       buildRow("🏦 ฝาก", fmt(r.deposit) + " บาท"),
-      buildRow("🪙 คืนกะ", fmt(r.remaining) + " บาท", Number(r.remaining) >= 0 ? "#27AE60" : "#E74C3C")
+      buildRow("🪙 คืนกะ", fmt(r.remaining) + " บาท", Number(r.remaining) >= 0 ? "#27AE60" : "#E74C3C"),
+      // แก้บั๊ก: เดิมกรณีวันนั้นมีหลายกะ (multi-shift) จะไม่แสดงหมายเหตุเลย
+      ...(r.note ? [{ type: "separator", margin: "xs" }, buildNoteRow("📝 หมายเหตุ", r.note)] : [])
     ]
   }));
 
@@ -323,7 +375,7 @@ async function getMonthReport(groupId) {
     }
     return buildMonthFlex(data, thaiMonths[now.getUTCMonth()] + " " + (year + 543));
   } catch (err) {
-    return { type: "text", text: "❌ ดึงข้อมูลไม่ได้ครับ: " + err.message };
+    return { type: "text", text: friendlyError("getMonthReport", err) };
   }
 }
 
@@ -348,7 +400,7 @@ async function getMonthReportByName(groupId, monthName) {
     }
     return buildMonthFlex(data, monthName + " " + (year + 543));
   } catch (err) {
-    return { type: "text", text: "❌ ดึงข้อมูลไม่ได้: " + err.message };
+    return { type: "text", text: friendlyError("getMonthReportByName", err) };
   }
 }
 
@@ -574,15 +626,20 @@ async function buildHistoryDateMenu(groupId, monthName) {
       }
     };
   } catch(err) {
-    return { type: "text", text: "❌ เกิดข้อผิดพลาด: " + err.message };
+    return { type: "text", text: friendlyError("buildHistoryDateMenu", err) };
   }
 }
 
 // ─── ประวัติ: ดูรายงาน + สลิปของวันนั้น ────────────────────────────────────────
 async function getHistoryByDate(groupId, dateStr) {
+  // แก้บั๊ก: เดิม dateStr ไม่ผ่านการตรวจรูปแบบ/encode เลย — ถ้ามาจากข้อความอิสระของผู้ใช้
+  // (ไม่ใช่จากปุ่มที่บอทสร้างเอง) จะสามารถแทรกอักขระพิเศษเข้าไปต่อท้าย query string ของ Supabase ได้
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return [{ type: "text", text: "❌ รูปแบบวันที่ไม่ถูกต้อง" }];
+  }
   try {
     const data = await supabase(
-      "/reports?report_date=eq." + dateStr + (groupId ? "&group_id=eq." + encodeURIComponent(groupId) : "") + "&order=created_at.asc"
+      "/reports?report_date=eq." + encodeURIComponent(dateStr) + (groupId ? "&group_id=eq." + encodeURIComponent(groupId) : "") + "&order=created_at.asc"
     );
     if (!data || data.length === 0) {
       return [{ type: "text", text: "📂 ไม่มีรายงานวันที่ " + formatThaiDate(dateStr) + " ครับ" }];
@@ -635,7 +692,7 @@ async function getHistoryByDate(groupId, dateStr) {
 
     return msgs;
   } catch(err) {
-    return [{ type: "text", text: "❌ เกิดข้อผิดพลาด: " + err.message }];
+    return [{ type: "text", text: friendlyError("getHistoryByDate", err) }];
   }
 }
 
@@ -744,9 +801,21 @@ app.get("/ping-db", async (req, res) => {
     await supabase("/reports?limit=1");
     res.json({ ok: true });
   } catch(e) {
-    res.status(500).json({ ok: false, error: e.message });
+    console.error("ping-db error:", e.message);
+    res.status(500).json({ ok: false });
   }
 });
 
 const PORT = process.env.PORT || 3000;
+
+// ─── Global error handler (ต้องอยู่ท้ายสุด หลังทุก route) ──────────────────────
+// แก้บั๊ก: เดิมไม่มี error handler กลางเลย ถ้ามีใครส่ง JSON ผิดรูปแบบไปที่ endpoint ไหนก็ตาม
+// (เช่น /save-report, /send-slip, /webhook) Express จะใช้ default error handler ซึ่งอาจโชว์
+// stack trace ของเซิร์ฟเวอร์ออกไปให้ผู้โจมตีเห็น (ขึ้นกับ NODE_ENV) — ตอนนี้บังคับตอบกลับแบบปลอดภัยเสมอ
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  if (res.headersSent) return next(err);
+  res.status(err.status || 400).json({ success: false, error: "invalid request" });
+});
+
 app.listen(PORT, () => console.log("Server running on port " + PORT));

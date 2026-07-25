@@ -16,29 +16,36 @@ const headers = {
   "Content-Type": "application/json",
 };
 
+// ขนาด Rich Menu — ต้องตรงกับขนาดจริงของ richmenu.png เป๊ะๆ เสมอ (LINE บังคับ)
+const RICHMENU_SIZE = { width: 2500, height: 843 };
+
 // ─── 1. สร้าง Rich Menu ──────────────────────────────────────────────────────
 async function createRichMenu() {
   console.log("1️⃣  กำลังสร้าง Rich Menu...");
+  // แก้บั๊ก: เดิมประกาศขนาด 2500x1686 (แบบ Large, ตาราง 2x2) แต่ richmenu.png จริงมีขนาดแค่
+  // 2500x843 (แบบ Compact ของ LINE) ทำให้ตอนอัปโหลดรูป (ขั้นตอนที่ 2) โดน LINE ปฏิเสธทุกครั้ง
+  // เพราะขนาดรูปที่อัปโหลดต้องตรงกับ "size" ที่ประกาศไว้เป๊ะๆ เท่านั้น
+  // ปรับให้ตรงกับรูปจริง: Compact size แบ่ง 4 ปุ่มเรียงแนวนอน (คอลัมน์ละ 625px)
   const body = {
-    size: { width: 2500, height: 1686 },
+    size: RICHMENU_SIZE,
     selected: true,
     name: "มนชิน เมนูหลัก",
     chatBarText: "เมนูด่วน",
     areas: [
       {
-        bounds: { x: 0, y: 0, width: 1250, height: 843 },
+        bounds: { x: 0, y: 0, width: 625, height: 843 },
         action: { type: "message", text: "ยอดวันนี้" },
       },
       {
-        bounds: { x: 1250, y: 0, width: 1250, height: 843 },
+        bounds: { x: 625, y: 0, width: 625, height: 843 },
         action: { type: "message", text: "ยอดเดือนนี้" },
       },
       {
-        bounds: { x: 0, y: 843, width: 1250, height: 843 },
+        bounds: { x: 1250, y: 0, width: 625, height: 843 },
         action: { type: "message", text: "สรุปยอด" },
       },
       {
-        bounds: { x: 1250, y: 843, width: 1250, height: 843 },
+        bounds: { x: 1875, y: 0, width: 625, height: 843 },
         action: { type: "message", text: "ประวัติ" },
       },
     ],
@@ -54,11 +61,29 @@ async function createRichMenu() {
 }
 
 // ─── 2. อัปโหลดรูป ───────────────────────────────────────────────────────────
-async function uploadImage(richMenuId) {
+// อ่านขนาดรูปจาก PNG header (IHDR chunk) แบบไม่ต้องพึ่ง library เพิ่ม
+function readPngSize(buf) {
+  if (buf.length < 24 || buf.toString("ascii", 12, 16) !== "IHDR") return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
+async function uploadImage(richMenuId, expectedSize) {
   console.log("2️⃣  กำลังอัปโหลดรูป...");
   const imgPath = path.join(__dirname, "richmenu.png");
   if (!fs.existsSync(imgPath)) {
     console.error("❌ ไม่พบไฟล์ richmenu.png");
+    process.exit(1);
+  }
+
+  // แก้บั๊ก: เดิมไม่มีการตรวจขนาดรูปก่อนอัปโหลดเลย ถ้าขนาดไม่ตรงกับที่ประกาศไว้ตอนสร้าง Rich Menu
+  // LINE จะปฏิเสธการอัปโหลดแบบไม่บอกสาเหตุชัดเจน — เช็คล่วงหน้าให้ error message เข้าใจง่ายกว่า
+  const buf = fs.readFileSync(imgPath);
+  const actualSize = readPngSize(buf);
+  if (actualSize && (actualSize.width !== expectedSize.width || actualSize.height !== expectedSize.height)) {
+    console.error(
+      `❌ ขนาดรูป richmenu.png (${actualSize.width}x${actualSize.height}) ไม่ตรงกับขนาด Rich Menu ที่ประกาศไว้ ` +
+      `(${expectedSize.width}x${expectedSize.height}) — แก้ไฟล์รูปหรือแก้ areas ใน createRichMenu() ให้ตรงกันก่อน`
+    );
     process.exit(1);
   }
 
@@ -119,7 +144,7 @@ async function main() {
   try {
     await deleteOldMenus();
     const id = await createRichMenu();
-    await uploadImage(id);
+    await uploadImage(id, RICHMENU_SIZE);
     await setDefault(id);
     console.log("\n✅ ติดตั้ง Rich Menu สำเร็จแล้วครับ!");
     console.log("   เปิด LINE OA แล้วจะเห็นเมนูด้านล่างทันที\n");

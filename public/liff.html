@@ -344,7 +344,10 @@
   </div>
 
   <!-- วันที่ (hidden) -->
-  <input type="date" id="dep-date" style="display:none" oninput="updateDateDisplay();calc()" />
+  <!-- แก้บั๊ก: เดิมใช้ display:none ทำให้บาง browser (โดยเฉพาะ fallback ที่เรียก .click()
+       ตอน showPicker() ไม่รองรับ) ไม่เปิด date picker ให้เลย เพราะ element ที่ display:none
+       จะไม่ถูก render เลย จึงเปลี่ยนมาซ่อนด้วยวิธีที่ยังคง render อยู่แทน -->
+  <input type="date" id="dep-date" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" oninput="updateDateDisplay();calc()" />
 
   <!-- ชื่อผู้ฝาก -->
   <div class="section">
@@ -354,7 +357,7 @@
         <div class="field-icon red">👤</div>
         <div class="field-body">
           <p class="field-label">ชื่อผู้ฝาก</p>
-          <input type="text" id="depositor-name" placeholder="ระบุชื่อผู้ฝาก" />
+          <input type="text" id="depositor-name" maxlength="100" placeholder="ระบุชื่อผู้ฝาก" />
         </div>
       </div>
     </div>
@@ -375,7 +378,7 @@
         <div class="field-icon red">💵</div>
         <div class="field-body">
           <p class="field-label">ยอดเงินเข้ากะ</p>
-          <input type="number" id="cash-in" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <input type="number" id="cash-in" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
@@ -390,7 +393,7 @@
         <div class="field-icon red">🛒</div>
         <div class="field-body">
           <p class="field-label">ยอดขายวันนี้</p>
-          <input type="number" id="total-sales" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <input type="number" id="total-sales" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
@@ -398,23 +401,23 @@
         <div class="field-icon red">📲</div>
         <div class="field-body">
           <p class="field-label">ยอดโอน</p>
-          <input type="number" id="transfer" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <input type="number" id="transfer" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
       <div class="field">
         <div class="field-icon gold">📥</div>
         <div class="field-body">
-          <p class="field-label">นำเงินเข้า</p>
-          <input type="number" id="cash-added" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <p class="field-label">นำเงินเข้า <span style="font-weight:400;color:#999;">(เติมเงินทอนเข้าลิ้นชักระหว่างกะ)</span></p>
+          <input type="number" id="cash-added" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
       <div class="field">
         <div class="field-icon gold">📤</div>
         <div class="field-body">
-          <p class="field-label">นำเงินออก</p>
-          <input type="number" id="cash-withdrawn" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <p class="field-label">นำเงินออก <span style="font-weight:400;color:#999;">(หยิบเงินสดออกจากลิ้นชักระหว่างกะ)</span></p>
+          <input type="number" id="cash-withdrawn" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
@@ -422,7 +425,7 @@
         <div class="field-icon red">⚖️</div>
         <div class="field-body">
           <p class="field-label">ยอดผลต่าง</p>
-          <input type="number" id="diff-amount" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <input type="number" id="diff-amount" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
@@ -447,7 +450,7 @@
         <div class="field-icon gold">🏦</div>
         <div class="field-body">
           <p class="field-label">ฝากธนาคารวันนี้</p>
-          <input type="number" id="deposit" inputmode="decimal" placeholder="0.00" oninput="calc()" />
+          <input type="number" id="deposit" inputmode="decimal" min="0" step="0.01" placeholder="0.00" oninput="calc()" />
         </div>
         <span class="field-unit">บาท</span>
       </div>
@@ -481,7 +484,7 @@
         <div class="field-icon gold">📝</div>
         <div class="field-body">
           <p class="field-label">หมายเหตุ (ถ้ามี)</p>
-          <input type="text" id="note" placeholder="ระบุหมายเหตุ..." />
+          <textarea id="note" rows="2" maxlength="300" placeholder="ระบุหมายเหตุ..." style="width:100%;border:none;outline:none;font-size:16px;font-family:'Sarabun',sans-serif;color:var(--text);font-weight:500;background:transparent;resize:vertical;padding:0;min-height:24px;"></textarea>
         </div>
       </div>
     </div>
@@ -554,14 +557,24 @@
     document.getElementById("date-display-input").value = txt;
   }
 
+  // แก้บั๊ก: attribute min="0" ในฟอร์มไม่ได้บล็อกการพิมพ์เลขติดลบจริงๆ (เบราว์เซอร์ส่วนใหญ่ยังพิมพ์ -5 ได้)
+  // ฟังก์ชันนี้จะ clamp ค่าที่อ่านจากช่องให้ไม่ติดลบเสมอ พร้อมแก้เลขในช่องให้ตรงกับที่ใช้จริงด้วย
+  function posNum(id) {
+    const el = document.getElementById(id);
+    let v = parseFloat(el.value);
+    if (isNaN(v)) return 0;
+    if (v < 0) { v = 0; el.value = "0"; }
+    return v;
+  }
+
   function calc() {
-    const cashIn        = parseFloat(document.getElementById("cash-in").value) || 0;
-    const totalSales    = parseFloat(document.getElementById("total-sales").value) || 0;
-    const transfer      = parseFloat(document.getElementById("transfer").value) || 0;
-    const cashAdded     = parseFloat(document.getElementById("cash-added").value) || 0;
-    const cashWithdrawn = parseFloat(document.getElementById("cash-withdrawn").value) || 0;
-    const deposit       = parseFloat(document.getElementById("deposit").value) || 0;
-    const diffAmt       = parseFloat(document.getElementById("diff-amount").value) || 0;
+    const cashIn        = posNum("cash-in");
+    const totalSales    = posNum("total-sales");
+    const transfer      = posNum("transfer");
+    const cashAdded     = posNum("cash-added");
+    const cashWithdrawn = posNum("cash-withdrawn");
+    const deposit       = posNum("deposit");
+    const diffAmt       = posNum("diff-amount");
     const diffType      = document.getElementById("diff-type").value;
     const cashSales  = totalSales - transfer;
     const totalCash  = cashIn + cashSales + cashAdded - cashWithdrawn + (diffType === "plus" ? diffAmt : -diffAmt);
@@ -575,6 +588,19 @@
 
   function onSlip(input) {
     if (!input.files || !input.files[0]) return;
+    const file = input.files[0];
+    // แก้บั๊ก: เดิมไม่ตรวจประเภท/ขนาดไฟล์เลย — ไฟล์ที่ไม่ใช่รูปหรือรูปใหญ่เกินไปอาจทำให้หน้าเว็บค้าง
+    if (!file.type.startsWith("image/")) {
+      showToast("⚠️ กรุณาเลือกไฟล์รูปภาพเท่านั้น");
+      input.value = "";
+      return;
+    }
+    const MAX_SIZE = 8 * 1024 * 1024; // 8MB
+    if (file.size > MAX_SIZE) {
+      showToast("⚠️ ไฟล์รูปใหญ่เกินไป (สูงสุด 8MB)");
+      input.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       slipBase64 = e.target.result;
@@ -582,7 +608,8 @@
       document.getElementById("slip-wrap").style.display = "block";
       document.getElementById("upload-area").style.display = "none";
     };
-    reader.readAsDataURL(input.files[0]);
+    reader.onerror = () => showToast("❌ อ่านไฟล์รูปไม่สำเร็จ กรุณาลองใหม่");
+    reader.readAsDataURL(file);
   }
 
   function removeSlip() {
@@ -593,9 +620,31 @@
     document.getElementById("slip-input").value = "";
   }
 
+  // ลองบันทึกรายงานซ้ำอัตโนมัติก่อนจะยอมแพ้ (เดิมพลาดครั้งเดียวคือจบ ข้อมูลหายเงียบๆ)
+  async function saveReportWithRetry(payload, idToken, attempts) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const res = await fetch("/save-report", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + (idToken || "")
+          },
+          body: payload
+        });
+        if (res.ok) return true;
+        console.error("save-report responded with status", res.status);
+      } catch (e) {
+        console.error("save attempt " + (i + 1) + " failed:", e);
+      }
+      if (i < attempts - 1) await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
+    return false;
+  }
+
   async function sendToLine() {
-    const cashIn     = parseFloat(document.getElementById("cash-in").value) || 0;
-    const totalSales = parseFloat(document.getElementById("total-sales").value) || 0;
+    const cashIn     = posNum("cash-in");
+    const totalSales = posNum("total-sales");
     if (cashIn === 0 && totalSales === 0) { showToast("⚠️ กรุณากรอกยอดเงินก่อน"); return; }
     if (!slipBase64) { showToast("⚠️ กรุณาแนบรูปสลิปก่อน"); return; }
 
@@ -609,11 +658,11 @@
     btn.disabled = true;
     btn.innerHTML = "⏳ กำลังส่ง...";
 
-    const transfer      = parseFloat(document.getElementById("transfer").value) || 0;
-    const cashAdded     = parseFloat(document.getElementById("cash-added").value) || 0;
-    const cashWithdrawn = parseFloat(document.getElementById("cash-withdrawn").value) || 0;
-    const deposit    = parseFloat(document.getElementById("deposit").value) || 0;
-    const diffAmt    = parseFloat(document.getElementById("diff-amount").value) || 0;
+    const transfer      = posNum("transfer");
+    const cashAdded     = posNum("cash-added");
+    const cashWithdrawn = posNum("cash-withdrawn");
+    const deposit    = posNum("deposit");
+    const diffAmt    = posNum("diff-amount");
     const diffType   = document.getElementById("diff-type").value;
     const cashSales  = totalSales - transfer;
     const totalCash  = cashIn + cashSales + cashAdded - cashWithdrawn + (diffType === "plus" ? diffAmt : -diffAmt);
@@ -738,17 +787,34 @@
         slip_url:       window._slipUrl || "",
         group_id:       gId
       });
-      try {
-        await fetch("https://monshin-line-backend-n695.onrender.com/save-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: savePayload
-        });
-      } catch(e) {
-        console.error("save error:", e);
-      }
 
-      liff.closeWindow();
+      // แก้บั๊ก: เดิมใช้ URL แบบ absolute ฝังตายตัว + error ตอนบันทึกถูกกลืนแบบเงียบๆ
+      // (ผู้ใช้เห็น "ส่งสำเร็จ" ทั้งที่ข้อมูลอาจไม่ถูกบันทึกลงฐานข้อมูลจริง) ตอนนี้จะลองใหม่อัตโนมัติ
+      // และถ้ายังไม่สำเร็จ จะไม่ปิดหน้าต่างทิ้งเงียบๆ แต่แจ้งเตือนให้กดลองใหม่แทน
+      let idToken = "";
+      try { idToken = liff.getIDToken() || ""; } catch(e) { /* ไม่มี token ก็ยังทำงานต่อได้ถ้าฝั่งเซิร์ฟเวอร์ไม่ได้บังคับตรวจ */ }
+
+      const saved = await saveReportWithRetry(savePayload, idToken, 3);
+
+      if (saved) {
+        liff.closeWindow();
+      } else {
+        showToast("⚠️ ส่งเข้ากลุ่มแล้ว แต่บันทึกข้อมูลไม่สำเร็จ — กดปุ่มเพื่อลองบันทึกอีกครั้ง");
+        btn.disabled = false;
+        btn.innerHTML = "🔄 ลองบันทึกข้อมูลอีกครั้ง";
+        btn.onclick = async () => {
+          btn.disabled = true;
+          btn.innerHTML = "⏳ กำลังบันทึก...";
+          const retried = await saveReportWithRetry(savePayload, idToken, 2);
+          if (retried) {
+            showToast("✅ บันทึกข้อมูลสำเร็จแล้ว");
+            liff.closeWindow();
+          } else {
+            showToast("❌ ยังบันทึกไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+            btn.disabled = false;
+          }
+        };
+      }
 
     } catch (err) {
       console.error("sendToLine error:", err);
