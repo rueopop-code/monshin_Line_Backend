@@ -1,7 +1,0 @@
-[phases.setup]
-# 🔧 FIX: ระบุ nodejs_20 ชัดเจน — หลังอัปเดต sharp เป็น 0.35.x ต้องการ Node >=20.9.0
-# (เดิมไม่ได้ระบุเวอร์ชัน Node จะใช้ default ของ Nixpacks ซึ่งอาจต่ำกว่าที่ sharp ต้องการ)
-nixPkgs = ["nodejs_20", "tesseract", "leptonica"]
-
-[phases.install]
-cmds = ["npm install"]
